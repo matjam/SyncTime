@@ -530,6 +530,25 @@ cleanup:
 
 void window_close(void)
 {
+    /* Detach lists from gadgets BEFORE disposing (prevents crash) */
+    if (win) {
+        if (gad_region) {
+            SetGadgetAttrs((struct Gadget *)gad_region, win, NULL,
+                CHOOSER_Labels, (ULONG)~0,
+                TAG_DONE);
+        }
+        if (gad_city) {
+            SetGadgetAttrs((struct Gadget *)gad_city, win, NULL,
+                LISTBROWSER_Labels, (ULONG)~0,
+                TAG_DONE);
+        }
+        if (gad_log && log_visible) {
+            SetGadgetAttrs((struct Gadget *)gad_log, win, NULL,
+                LISTBROWSER_Labels, (ULONG)~0,
+                TAG_DONE);
+        }
+    }
+
     if (win) {
         DoMethod(window_obj, WM_CLOSE, NULL);
         win = NULL;
@@ -539,12 +558,14 @@ void window_close(void)
         window_obj = NULL;
     }
 
-    /* Free list nodes */
+    /* Free list nodes (safe now that gadgets are gone) */
     if (region_list_initialized) {
         free_chooser_list(&region_chooser_list);
+        region_list_initialized = FALSE;
     }
     if (city_list_initialized) {
         free_listbrowser_list(&city_browser_list);
+        city_list_initialized = FALSE;
     }
     /* Note: log list is preserved across window open/close */
 
@@ -630,10 +651,19 @@ static void toggle_log_panel(void)
     } else {
         /* Remove log panel */
         if (layout_log) {
+            /* IMPORTANT: Detach list from gadget BEFORE disposing */
+            if (gad_log) {
+                SetGadgetAttrs((struct Gadget *)gad_log, win, NULL,
+                    LISTBROWSER_Labels, (ULONG)~0,
+                    TAG_DONE);
+            }
+
+            /* Remove from parent layout */
             SetGadgetAttrs((struct Gadget *)layout_root, win, NULL,
                 LAYOUT_RemoveChild, (ULONG)layout_log,
                 TAG_DONE);
 
+            /* Now safe to dispose (disposes gad_log too) */
             DisposeObject(layout_log);
             layout_log = NULL;
             gad_log = NULL;
@@ -668,7 +698,7 @@ static void handle_region_change(ULONG new_region)
 
     /* Detach list from gadget before modifying */
     SetGadgetAttrs((struct Gadget *)gad_city, win, NULL,
-        LISTBROWSER_Labels, ~0,
+        LISTBROWSER_Labels, (ULONG)~0,
         TAG_DONE);
 
     /* Rebuild city list */
