@@ -660,31 +660,28 @@ static void toggle_log_panel(void)
     } else {
         /* Remove log panel */
         if (layout_log) {
-            /* IMPORTANT: Detach list from gadget BEFORE disposing */
+            /* IMPORTANT: Detach list from gadget BEFORE removing */
             if (gad_log) {
                 SetGadgetAttrs((struct Gadget *)gad_log, win, NULL,
                     LISTBROWSER_Labels, (ULONG)~0,
                     TAG_DONE);
             }
 
-            /* Remove from parent layout */
-            SetGadgetAttrs((struct Gadget *)layout_root, win, NULL,
-                LAYOUT_RemoveChild, (ULONG)layout_log,
-                TAG_DONE);
-
-            /* Update button text */
+            /* Update button text first (while layout_log still valid) */
             SetGadgetAttrs((struct Gadget *)gad_log_toggle, win, NULL,
                 GA_Text, (ULONG)"Show Log",
                 TAG_DONE);
 
-            /* Shrink window FIRST, then rethink layout */
+            /* Shrink window - this effectively hides the log area */
             ChangeWindowBox(win, win->LeftEdge, win->TopEdge,
                 win->Width, win->Height - LOG_PANEL_HEIGHT);
 
-            /* Refresh window layout with new size */
-            RethinkLayout((struct Gadget *)layout_root, win, NULL, TRUE);
+            /* Remove from parent layout AFTER window shrink */
+            SetGadgetAttrs((struct Gadget *)layout_root, win, NULL,
+                LAYOUT_RemoveChild, (ULONG)layout_log,
+                TAG_DONE);
 
-            /* NOW dispose the removed layout (after rethink is done) */
+            /* Now safe to dispose */
             DisposeObject(layout_log);
             layout_log = NULL;
             gad_log = NULL;
