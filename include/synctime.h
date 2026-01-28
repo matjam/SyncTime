@@ -48,6 +48,7 @@
 #define SERVER_NAME_MAX    128
 #define MIN_INTERVAL       60
 #define MAX_INTERVAL       86400
+#define RETRY_INTERVAL     30      /* Seconds between retries on failure */
 #define MIN_TIMEZONE       -12
 #define MAX_TIMEZONE       14
 
@@ -144,7 +145,7 @@ ULONG clock_timer_signal(void);
 BOOL  window_open(struct Screen *screen);
 void  window_close(void);
 BOOL  window_is_open(void);
-void  window_handle_events(SyncConfig *cfg, SyncStatus *st);
+BOOL  window_handle_events(SyncConfig *cfg, SyncStatus *st);  /* Returns TRUE if "Sync Now" requested */
 ULONG window_signal(void);
 void  window_update_status(SyncStatus *st);
 

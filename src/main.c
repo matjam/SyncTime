@@ -282,6 +282,21 @@ static void perform_sync(void)
 }
 
 /* =========================================================================
+ * get_next_interval - Return timer interval based on last sync status
+ *
+ * If the last sync failed, return RETRY_INTERVAL (30s) for quick retry.
+ * If the last sync succeeded, return the configured interval.
+ * ========================================================================= */
+
+static ULONG get_next_interval(void)
+{
+    if (sync_status.status == STATUS_OK) {
+        return (ULONG)config_get()->interval;
+    }
+    return RETRY_INTERVAL;
+}
+
+/* =========================================================================
  * event_loop - Main commodity event loop
  * ========================================================================= */
 
@@ -307,8 +322,8 @@ static void event_loop(void)
             /* The timer IORequest completed - acknowledge it */
             perform_sync();
             if (cx_enabled) {
-                SyncConfig *cfg = config_get();
-                clock_start_timer(cfg->interval);
+                /* Use retry interval (30s) if sync failed, otherwise configured interval */
+                clock_start_timer(get_next_interval());
             }
         }
 
@@ -340,7 +355,7 @@ static void event_loop(void)
                                 ActivateCxObj(broker, TRUE);
                                 cx_enabled = TRUE;
                                 perform_sync();
-                                clock_start_timer(config_get()->interval);
+                                clock_start_timer(get_next_interval());
                                 break;
                             case CXCMD_KILL:
                                 running = FALSE;
@@ -368,11 +383,18 @@ static void event_loop(void)
         if ((signals & win_sig) && window_is_open()) {
             SyncConfig *cfg = config_get();
             LONG old_interval = cfg->interval;
-            window_handle_events(cfg, &sync_status);
-            /* If interval changed, restart timer */
-            if (cfg->interval != old_interval && cx_enabled) {
+            BOOL sync_now = window_handle_events(cfg, &sync_status);
+
+            /* Handle "Sync Now" button */
+            if (sync_now && cx_enabled) {
                 clock_abort_timer();
-                clock_start_timer(cfg->interval);
+                perform_sync();
+                clock_start_timer(get_next_interval());
+            }
+            /* If interval changed, restart timer */
+            else if (cfg->interval != old_interval && cx_enabled) {
+                clock_abort_timer();
+                clock_start_timer(get_next_interval());
             }
         }
     }
@@ -409,9 +431,9 @@ int main(int argc, char **argv)
     /* Perform initial sync */
     perform_sync();
 
-    /* Start periodic timer */
+    /* Start periodic timer: use retry interval if initial sync failed */
     if (cx_enabled) {
-        clock_start_timer(config_get()->interval);
+        clock_start_timer(get_next_interval());
     }
 
     /* Run event loop */

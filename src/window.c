@@ -18,8 +18,9 @@
 #define GID_INTERVAL   4
 #define GID_TIMEZONE   5
 #define GID_DST        6
-#define GID_SAVE       7
-#define GID_HIDE       8
+#define GID_SYNC       7
+#define GID_SAVE       8
+#define GID_HIDE       9
 
 /* =========================================================================
  * Timezone cycle labels (NULL-terminated for GadTools CYCLE_KIND)
@@ -197,23 +198,36 @@ BOOL window_open(struct Screen *screen)
     /* Extra gap before buttons */
     y += 10;
 
-    /* ---- Save button ---- */
-    ng.ng_TopEdge    = y;
-    ng.ng_LeftEdge   = gad_left;
-    ng.ng_Width      = (gad_width - 10) / 2;
-    ng.ng_Height     = fonth + 6;
-    ng.ng_GadgetText = "Save";
-    ng.ng_GadgetID   = GID_SAVE;
-    ng.ng_Flags      = PLACETEXT_IN;
-    gad = CreateGadget(BUTTON_KIND, gad, &ng, TAG_DONE);
+    /* Button row: Sync Now, Save, Hide (3 buttons with 5px gaps) */
+    {
+        UWORD btn_width = (gad_width - 10) / 3;  /* 3 buttons, 2 gaps of 5px */
+        UWORD btn_gap = 5;
 
-    /* ---- Hide button ---- */
-    ng.ng_LeftEdge   = gad_left + ng.ng_Width + 10;
-    ng.ng_GadgetText = "Hide";
-    ng.ng_GadgetID   = GID_HIDE;
-    gad = CreateGadget(BUTTON_KIND, gad, &ng, TAG_DONE);
+        ng.ng_TopEdge    = y;
+        ng.ng_Height     = fonth + 6;
+        ng.ng_Flags      = PLACETEXT_IN;
 
-    y += ng.ng_Height;
+        /* ---- Sync Now button ---- */
+        ng.ng_LeftEdge   = gad_left;
+        ng.ng_Width      = btn_width;
+        ng.ng_GadgetText = "Sync Now";
+        ng.ng_GadgetID   = GID_SYNC;
+        gad = CreateGadget(BUTTON_KIND, gad, &ng, TAG_DONE);
+
+        /* ---- Save button ---- */
+        ng.ng_LeftEdge   = gad_left + btn_width + btn_gap;
+        ng.ng_GadgetText = "Save";
+        ng.ng_GadgetID   = GID_SAVE;
+        gad = CreateGadget(BUTTON_KIND, gad, &ng, TAG_DONE);
+
+        /* ---- Hide button ---- */
+        ng.ng_LeftEdge   = gad_left + 2 * (btn_width + btn_gap);
+        ng.ng_GadgetText = "Hide";
+        ng.ng_GadgetID   = GID_HIDE;
+        gad = CreateGadget(BUTTON_KIND, gad, &ng, TAG_DONE);
+
+        y += ng.ng_Height;
+    }
 
     if (!gad) {
         /* One or more gadgets failed to create */
@@ -305,16 +319,19 @@ BOOL window_is_open(void)
  *
  * cfg: pointer to live config struct (updated on Save)
  * st:  pointer to sync status (currently unused here, reserved for future)
+ *
+ * Returns TRUE if "Sync Now" was pressed, FALSE otherwise.
  * ========================================================================= */
 
-void window_handle_events(SyncConfig *cfg, SyncStatus *st)
+BOOL window_handle_events(SyncConfig *cfg, SyncStatus *st)
 {
     struct IntuiMessage *msg;
+    BOOL sync_requested = FALSE;
 
     (void)st;  /* status is updated via window_update_status */
 
     if (!win)
-        return;
+        return FALSE;
 
     while ((msg = GT_GetIMsg(win->UserPort))) {
         ULONG class = msg->Class;
@@ -326,7 +343,7 @@ void window_handle_events(SyncConfig *cfg, SyncStatus *st)
         switch (class) {
             case IDCMP_CLOSEWINDOW:
                 window_close();
-                return;  /* Window is gone -- stop processing */
+                return sync_requested;  /* Window is gone -- stop processing */
 
             case IDCMP_REFRESHWINDOW:
                 GT_BeginRefresh(win);
@@ -335,6 +352,10 @@ void window_handle_events(SyncConfig *cfg, SyncStatus *st)
 
             case IDCMP_GADGETUP:
                 switch (gad->GadgetID) {
+                    case GID_SYNC:
+                        sync_requested = TRUE;
+                        break;
+
                     case GID_SAVE: {
                         /* Read current gadget values and push into config */
                         char *srv;
@@ -360,7 +381,7 @@ void window_handle_events(SyncConfig *cfg, SyncStatus *st)
 
                     case GID_HIDE:
                         window_close();
-                        return;
+                        return sync_requested;
 
                     case GID_TIMEZONE:
                         local_tz_index = code;
@@ -373,6 +394,8 @@ void window_handle_events(SyncConfig *cfg, SyncStatus *st)
                 break;
         }
     }
+
+    return sync_requested;
 }
 
 /* =========================================================================

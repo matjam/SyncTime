@@ -92,8 +92,14 @@ Editable settings:
 - **Timezone**: UTC offset (-12 to +14)
 - **DST**: Daylight Saving Time adjustment (+1 hour when enabled)
 
-Click **Save** to apply changes and write to ENV:/ENVARC:.
-Click **Hide** to close the window.
+Buttons:
+- **Sync Now**: Immediately perform a time synchronization
+- **Save**: Apply changes and write to ENV:/ENVARC:
+- **Hide**: Close the configuration window
+
+### Retry Behavior
+
+SyncTime syncs immediately on startup. If the sync fails (network unavailable, DNS error, etc.), it will automatically retry every 30 seconds until successful. Once a sync succeeds, it switches to the configured interval (default: 1 hour).
 
 ## Signals
 
