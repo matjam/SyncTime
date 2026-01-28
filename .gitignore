@@ -3,3 +3,9 @@ SyncTime
 SyncTime.map
 src/tz_table.c
 tzdata/
+*.uaem
+Disk.info
+.claude
+__pycache__/
+*.pyc
+tzdb-2025c

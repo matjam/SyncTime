@@ -1,0 +1,78 @@
+Short:        NTP time sync commodity with timezone support
+Author:       Nathan Ollerenshaw <chrome@stupendous.net>
+Uploader:     chrome@stupendous.net
+Type:         util/time
+Version:      1.0.0
+Architecture: m68k-amigaos >= 3.2.0
+Requires:     AmigaOS 3.2+, bsdsocket.library, Roadshow or similar TCP/IP stack
+Distribution: Aminet
+
+SyncTime is a commodity that synchronizes your Amiga's clock with internet
+time servers using the SNTP protocol. It features a Reaction-based GUI for
+configuration and includes a comprehensive timezone database.
+
+Features:
+
+  * SNTP time synchronization from configurable NTP servers
+  * Full IANA timezone database with DST support
+  * Region/city timezone picker with 400+ locations
+  * Sets TZ and TZONE environment variables
+  * Configurable sync interval (minimum 15 minutes)
+  * Scrollable activity log
+  * Standard commodity hotkey and Exchange integration
+  * Runs quietly in the background
+
+Installation:
+
+  Copy SyncTime to your WBStartup drawer or Commodities directory.
+
+  The program will create its configuration file at:
+    ENVARC:SyncTime.prefs
+
+Usage:
+
+  SyncTime runs as a standard Amiga commodity. Use Exchange to show/hide
+  the configuration window, or press the hotkey (default: ctrl alt s).
+
+  From the configuration window you can:
+    - View sync status and last/next sync times
+    - Configure the NTP server (default: pool.ntp.org)
+    - Set the sync interval in seconds
+    - Select your timezone by region and city
+    - View the activity log
+    - Trigger an immediate sync
+
+  Click "Save" to persist your settings to ENVARC:.
+
+Tooltypes/CLI Arguments:
+
+  CX_PRIORITY=<n>   Commodity priority (default: 0)
+  CX_POPUP=YES|NO   Open window on startup (default: NO)
+  CX_POPKEY=<key>   Hotkey to toggle window (default: ctrl alt s)
+
+Requirements:
+
+  * AmigaOS 3.2 or later (for Reaction GUI)
+  * A working TCP/IP stack (Roadshow, AmiTCP, Miami, etc.)
+  * Network connectivity to reach NTP servers
+
+Source Code:
+
+  Source code is available at:
+    https://github.com/matjam/synctime
+
+History:
+
+  1.0.0 - Initial release
+        - SNTP synchronization
+        - Reaction GUI with timezone picker
+        - IANA timezone database with DST
+        - TZ/TZONE environment variable support
+
+License:
+
+  This software is released under the MIT License.
+
+Contact:
+
+  Nathan Ollerenshaw <chrome@stupendous.net>
