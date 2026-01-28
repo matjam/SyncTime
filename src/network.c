@@ -1,9 +1,162 @@
-/* network.c - BSD socket networking for SyncTime */
+/* network.c - BSD socket networking for SyncTime
+ *
+ * Wraps bsdsocket.library for UDP communication:
+ * DNS resolve, send, receive with timeout.
+ */
 
 #include "synctime.h"
 
-BOOL network_init(void) { return TRUE; }
-void network_cleanup(void) { }
-BOOL network_resolve(const char *hostname, ULONG *ip_addr) { return FALSE; }
-BOOL network_send_udp(ULONG ip_addr, UWORD port, const UBYTE *data, ULONG len) { return FALSE; }
-LONG network_recv_udp(UBYTE *buf, ULONG buf_size, ULONG timeout_secs) { return -1; }
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <proto/socket.h>
+
+/* Static state: current socket file descriptor, -1 when not open */
+static LONG sock_fd = -1;
+
+/*
+ * network_init - Open bsdsocket.library
+ *
+ * Opens any version of bsdsocket.library (version 0) since
+ * different TCP/IP stacks (Roadshow, AmiTCP, Miami) may vary.
+ * The library base is stored in the global SocketBase.
+ *
+ * Returns TRUE on success, FALSE if library cannot be opened.
+ */
+BOOL network_init(void)
+{
+    SocketBase = OpenLibrary("bsdsocket.library", 0);
+    if (SocketBase == NULL)
+        return FALSE;
+
+    sock_fd = -1;
+    return TRUE;
+}
+
+/*
+ * network_cleanup - Close socket and bsdsocket.library
+ *
+ * Closes any open socket and releases bsdsocket.library.
+ */
+void network_cleanup(void)
+{
+    if (sock_fd >= 0) {
+        CloseSocket(sock_fd);
+        sock_fd = -1;
+    }
+
+    if (SocketBase) {
+        CloseLibrary(SocketBase);
+        SocketBase = NULL;
+    }
+}
+
+/*
+ * network_resolve - Resolve hostname to IPv4 address
+ *
+ * Uses gethostbyname() from bsdsocket.library to resolve
+ * the given hostname. The result is in network byte order.
+ *
+ * Returns TRUE on success, FALSE on failure.
+ */
+BOOL network_resolve(const char *hostname, ULONG *ip_addr)
+{
+    struct hostent *h;
+
+    h = gethostbyname((STRPTR)hostname);
+    if (h == NULL)
+        return FALSE;
+
+    memcpy(ip_addr, h->h_addr_list[0], sizeof(ULONG));
+    return TRUE;
+}
+
+/*
+ * network_send_udp - Send a UDP packet
+ *
+ * Creates a new UDP socket (closing any previous one), sets a
+ * 5-second receive timeout via SO_RCVTIMEO, builds the destination
+ * address, and sends the data.
+ *
+ * The socket is kept open after a successful send so that
+ * network_recv_udp() can receive the reply.
+ *
+ * 68000 is big-endian, same as network byte order, so no
+ * byte swapping is needed for port or address values.
+ *
+ * Returns TRUE on success, FALSE on failure.
+ */
+BOOL network_send_udp(ULONG ip_addr, UWORD port,
+                      const UBYTE *data, ULONG len)
+{
+    struct timeval tv;
+    struct sockaddr_in dest;
+    LONG result;
+
+    /* Close any previously open socket */
+    if (sock_fd >= 0) {
+        CloseSocket(sock_fd);
+        sock_fd = -1;
+    }
+
+    /* Create UDP socket */
+    sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock_fd < 0)
+        return FALSE;
+
+    /* Set receive timeout to 5 seconds */
+    tv.tv_sec = 5;
+    tv.tv_usec = 0;
+    setsockopt(sock_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    /* Build destination address */
+    memset(&dest, 0, sizeof(dest));
+    dest.sin_family = AF_INET;
+    dest.sin_port = port;           /* 68k is big-endian, no swap needed */
+    dest.sin_addr.s_addr = ip_addr; /* already in network byte order */
+
+    /* Send the packet */
+    result = sendto(sock_fd, (UBYTE *)data, len, 0,
+                    (struct sockaddr *)&dest, sizeof(dest));
+    if (result < 0 || (ULONG)result != len) {
+        CloseSocket(sock_fd);
+        sock_fd = -1;
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+/*
+ * network_recv_udp - Receive a UDP packet
+ *
+ * Receives data on the currently open socket (opened by
+ * network_send_udp). The timeout was already set via
+ * SO_RCVTIMEO in the send function, so the timeout_secs
+ * parameter is unused.
+ *
+ * The socket is closed after receive (success or failure).
+ *
+ * Returns number of bytes received, or -1 on error/timeout.
+ */
+LONG network_recv_udp(UBYTE *buf, ULONG buf_size, ULONG timeout_secs)
+{
+    LONG result;
+
+    (void)timeout_secs; /* timeout set via SO_RCVTIMEO in send_udp */
+
+    if (sock_fd < 0)
+        return -1;
+
+    result = recvfrom(sock_fd, buf, buf_size, 0, NULL, NULL);
+
+    /* Close the socket regardless of result */
+    CloseSocket(sock_fd);
+    sock_fd = -1;
+
+    if (result < 0)
+        return -1;
+
+    return result;
+}
