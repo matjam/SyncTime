@@ -230,6 +230,7 @@ static void format_ip(ULONG ip_addr, char *buf)
 static void perform_sync(void)
 {
     SyncConfig *cfg;
+    const TZEntry *tz;
     ULONG ip_addr;
     UBYTE packet[NTP_PACKET_SIZE];
     ULONG ntp_secs;
@@ -247,6 +248,13 @@ static void perform_sync(void)
 
     /* Get current configuration */
     cfg = config_get();
+
+    /* Look up timezone entry */
+    tz = tz_find_by_name(cfg->tz_name);
+    if (tz == NULL) {
+        window_log("WARNING: Unknown timezone, using UTC");
+        /* Fall through with NULL tz - tz_get_offset_mins handles NULL */
+    }
 
     /* Step 1: Resolve server hostname */
     set_status(STATUS_SYNCING, "Syncing...");
@@ -309,7 +317,7 @@ static void perform_sync(void)
     window_log("Response valid, extracting time...");
 
     /* Step 5: Convert NTP time to Amiga time */
-    amiga_secs = sntp_ntp_to_amiga(ntp_secs, cfg->timezone, cfg->dst);
+    amiga_secs = sntp_ntp_to_amiga(ntp_secs, tz);
 
     /* Step 6: Set the system clock */
     window_log("Setting system clock...");
