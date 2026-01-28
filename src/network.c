@@ -129,12 +129,11 @@ BOOL network_send_udp(ULONG ip_addr, UWORD port,
 }
 
 /*
- * network_recv_udp - Receive a UDP packet
+ * network_recv_udp - Receive a UDP packet with timeout
  *
  * Receives data on the currently open socket (opened by
- * network_send_udp). The timeout was already set via
- * SO_RCVTIMEO in the send function, so the timeout_secs
- * parameter is unused.
+ * network_send_udp). Uses WaitSelect() for timeout since
+ * SO_RCVTIMEO is not supported by all Amiga TCP/IP stacks.
  *
  * The socket is closed after receive (success or failure).
  *
@@ -142,13 +141,33 @@ BOOL network_send_udp(ULONG ip_addr, UWORD port,
  */
 LONG network_recv_udp(UBYTE *buf, ULONG buf_size, ULONG timeout_secs)
 {
+    fd_set read_fds;
+    struct timeval tv;
+    LONG select_result;
     LONG result;
-
-    (void)timeout_secs; /* timeout set via SO_RCVTIMEO in send_udp */
 
     if (sock_fd < 0)
         return -1;
 
+    /* Set up the fd_set for select/WaitSelect */
+    FD_ZERO(&read_fds);
+    FD_SET(sock_fd, &read_fds);
+
+    /* Set timeout */
+    tv.tv_sec = timeout_secs;
+    tv.tv_usec = 0;
+
+    /* Wait for data with timeout using WaitSelect */
+    select_result = WaitSelect(sock_fd + 1, &read_fds, NULL, NULL, &tv, NULL);
+
+    if (select_result <= 0) {
+        /* Timeout (0) or error (-1) */
+        CloseSocket(sock_fd);
+        sock_fd = -1;
+        return -1;
+    }
+
+    /* Data is available, receive it */
     result = recvfrom(sock_fd, buf, buf_size, 0, NULL, NULL);
 
     /* Close the socket regardless of result */

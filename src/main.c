@@ -195,7 +195,21 @@ static void cleanup_commodity(void)
 
 /* =========================================================================
  * perform_sync - Execute a single NTP synchronization
+ *
+ * Updates status display at each step for user feedback.
  * ========================================================================= */
+
+/* Re-entrancy guard */
+static BOOL sync_in_progress = FALSE;
+
+/* Helper to update status text and refresh window */
+static void update_status(int status_code, const char *text)
+{
+    sync_status.status = status_code;
+    strcpy(sync_status.status_text, text);
+    if (window_is_open())
+        window_update_status(&sync_status);
+}
 
 static void perform_sync(void)
 {
@@ -207,68 +221,60 @@ static void perform_sync(void)
     LONG bytes;
     ULONG amiga_secs;
 
-    /* Indicate syncing in progress */
-    sync_status.status = STATUS_SYNCING;
-    strcpy(sync_status.status_text, "Syncing...");
-    if (window_is_open())
-        window_update_status(&sync_status);
+    /* Prevent re-entrancy */
+    if (sync_in_progress)
+        return;
+    sync_in_progress = TRUE;
 
     /* Get current configuration */
     cfg = config_get();
 
     /* Step 1: Resolve server hostname */
+    update_status(STATUS_SYNCING, "Resolving server...");
     if (!network_resolve(cfg->server, &ip_addr)) {
-        sync_status.status = STATUS_ERROR;
-        strcpy(sync_status.status_text, "DNS failed");
-        if (window_is_open())
-            window_update_status(&sync_status);
+        update_status(STATUS_ERROR, "DNS lookup failed");
+        sync_in_progress = FALSE;
         return;
     }
 
-    /* Step 2: Build SNTP request packet */
+    /* Step 2: Build and send SNTP request packet */
+    update_status(STATUS_SYNCING, "Sending request...");
     sntp_build_request(packet);
-
-    /* Step 3: Send UDP packet */
     if (!network_send_udp(ip_addr, NTP_PORT, packet, NTP_PACKET_SIZE)) {
-        sync_status.status = STATUS_ERROR;
-        strcpy(sync_status.status_text, "Send failed");
-        if (window_is_open())
-            window_update_status(&sync_status);
+        update_status(STATUS_ERROR, "Send failed");
+        sync_in_progress = FALSE;
         return;
     }
 
-    /* Step 4: Receive response */
+    /* Step 3: Wait for response */
+    update_status(STATUS_SYNCING, "Waiting for response...");
     bytes = network_recv_udp(packet, NTP_PACKET_SIZE, 5);
     if (bytes < NTP_PACKET_SIZE) {
-        sync_status.status = STATUS_ERROR;
-        strcpy(sync_status.status_text, "No response");
-        if (window_is_open())
-            window_update_status(&sync_status);
+        update_status(STATUS_ERROR, "No response (timeout)");
+        sync_in_progress = FALSE;
         return;
     }
 
-    /* Step 5: Parse SNTP response */
+    /* Step 4: Parse SNTP response */
+    update_status(STATUS_SYNCING, "Parsing response...");
     if (!sntp_parse_response(packet, &ntp_secs, &ntp_frac)) {
-        sync_status.status = STATUS_ERROR;
-        strcpy(sync_status.status_text, "Bad response");
-        if (window_is_open())
-            window_update_status(&sync_status);
+        update_status(STATUS_ERROR, "Invalid NTP response");
+        sync_in_progress = FALSE;
         return;
     }
 
-    /* Step 6: Convert NTP time to Amiga time */
+    /* Step 5: Convert NTP time to Amiga time */
     amiga_secs = sntp_ntp_to_amiga(ntp_secs, cfg->timezone, cfg->dst);
 
-    /* Step 7: Set the system clock */
+    /* Step 6: Set the system clock */
+    update_status(STATUS_SYNCING, "Setting clock...");
     if (!clock_set_system_time(amiga_secs, 0)) {
-        sync_status.status = STATUS_ERROR;
-        strcpy(sync_status.status_text, "Clock set failed");
-        if (window_is_open())
-            window_update_status(&sync_status);
+        update_status(STATUS_ERROR, "Clock set failed");
+        sync_in_progress = FALSE;
         return;
     }
 
-    /* Success: update sync status */
+    /* Success: update sync status with timestamps */
     sync_status.status = STATUS_OK;
     strcpy(sync_status.status_text, "Synchronized");
     sync_status.last_sync_secs = amiga_secs;
@@ -279,6 +285,8 @@ static void perform_sync(void)
                       sizeof(sync_status.next_sync_text));
     if (window_is_open())
         window_update_status(&sync_status);
+
+    sync_in_progress = FALSE;
 }
 
 /* =========================================================================
