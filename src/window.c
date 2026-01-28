@@ -350,11 +350,11 @@ void window_handle_events(SyncConfig *cfg, SyncStatus *st)
                         config_save();
                         config_changed = TRUE;
 
-                        /* Refresh cfg pointer so caller sees new values */
-                        {
-                            SyncConfig *updated = config_get();
-                            memcpy(cfg, updated, sizeof(SyncConfig));
-                        }
+                        /* cfg already points to the static config struct
+                         * returned by config_get(), so it's already updated.
+                         * No copy needed.
+                         */
+                        (void)cfg;
                         break;
                     }
 
@@ -382,7 +382,7 @@ void window_handle_events(SyncConfig *cfg, SyncStatus *st)
 ULONG window_signal(void)
 {
     if (win)
-        return 1L << win->UserPort->mp_SigBit;
+        return 1UL << win->UserPort->mp_SigBit;
     return 0;
 }
 

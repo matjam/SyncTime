@@ -45,7 +45,7 @@ static SyncStatus sync_status;
 
 static BOOL open_libraries(void);
 static void close_libraries(void);
-static BOOL setup_commodity(void);
+static BOOL setup_commodity(int argc, char **argv);
 static void cleanup_commodity(void);
 static void perform_sync(void);
 static void event_loop(void);
@@ -112,7 +112,7 @@ static void close_libraries(void)
  * setup_commodity / cleanup_commodity
  * ========================================================================= */
 
-static BOOL setup_commodity(void)
+static BOOL setup_commodity(int argc, char **argv)
 {
     LONG priority;
     STRPTR popup;
@@ -126,8 +126,13 @@ static BOOL setup_commodity(void)
     if (broker_port == NULL)
         return FALSE;
 
-    /* Parse tooltypes / CLI args for commodity overrides */
-    ttypes = ArgArrayInit(0, NULL);
+    /* Parse tooltypes / CLI args for commodity overrides.
+     * ArgArrayInit requires valid argc/argv for CLI launch.
+     * When argc > 0, it uses argv directly for tooltype parsing.
+     * When argc == 0, it assumes Workbench launch and uses argv
+     * as a WBStartup message pointer (handled by C startup code).
+     */
+    ttypes = ArgArrayInit(argc, (CONST_STRPTR *)argv);
 
     priority = ArgInt((CONST_STRPTR *)ttypes, "CX_PRIORITY", CX_DEFAULT_PRI);
     popup    = ArgString((CONST_STRPTR *)ttypes, "CX_POPUP", "NO");
@@ -282,7 +287,7 @@ static void perform_sync(void)
 
 static void event_loop(void)
 {
-    ULONG broker_sig = 1L << broker_port->mp_SigBit;
+    ULONG broker_sig = 1UL << broker_port->mp_SigBit;
     ULONG timer_sig, win_sig;
     ULONG signals;
     CxMsg *cxmsg;
@@ -398,7 +403,7 @@ int main(int argc, char **argv)
     if (!clock_init())
         goto cleanup;
 
-    if (!setup_commodity())
+    if (!setup_commodity(argc, argv))
         goto cleanup;
 
     /* Perform initial sync */
