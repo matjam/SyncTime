@@ -375,8 +375,8 @@ static void event_loop(void)
             break;
 
         /* Timer fired: sync and restart timer */
-        if (signals & timer_sig) {
-            /* The timer IORequest completed - acknowledge it */
+        if ((signals & timer_sig) && clock_check_timer()) {
+            /* Timer actually completed - acknowledged by clock_check_timer() */
             perform_sync();
             if (cx_enabled) {
                 /* Use retry interval (30s) if sync failed, otherwise configured interval */

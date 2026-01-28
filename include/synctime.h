@@ -137,6 +137,7 @@ void clock_format_time(ULONG amiga_secs, char *buf, ULONG buf_size);
 BOOL  clock_start_timer(ULONG seconds);
 void  clock_abort_timer(void);
 ULONG clock_timer_signal(void);
+BOOL  clock_check_timer(void);  /* Check if timer fired and acknowledge it */
 
 /* =========================================================================
  * window.c

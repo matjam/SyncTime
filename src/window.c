@@ -494,11 +494,14 @@ void window_log(const char *message)
     struct LogNode *node;
     LONG i;
 
+    /* Initialize log list if needed (may be called before window_open) */
+    init_log_list();
+
     /* Get next slot (circular buffer) */
     node = &log_nodes[log_next_slot];
 
     /* If this node is already in the list, remove it */
-    if (node->node.ln_Succ != NULL) {
+    if (node->node.ln_Succ != NULL && node->node.ln_Pred != NULL) {
         Remove(&node->node);
     }
 

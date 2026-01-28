@@ -250,3 +250,28 @@ ULONG clock_timer_signal(void)
 
     return 0;
 }
+
+/* --------------------------------------------------------------------------
+ * clock_check_timer - Check if timer fired and acknowledge it
+ *
+ * Must be called when timer_signal is received. Returns TRUE if the timer
+ * actually completed (vs spurious signal). Clears the pending flag.
+ * -------------------------------------------------------------------------- */
+
+BOOL clock_check_timer(void)
+{
+    struct Message *msg;
+
+    if (!periodic_port || !timer_pending)
+        return FALSE;
+
+    /* Check if a message is waiting (non-blocking) */
+    msg = GetMsg(periodic_port);
+    if (msg != NULL) {
+        /* Timer completed - don't reply, it's our own IORequest */
+        timer_pending = FALSE;
+        return TRUE;
+    }
+
+    return FALSE;
+}
