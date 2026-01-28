@@ -89,6 +89,9 @@ static BOOL log_visible = FALSE;
 /* Log panel height for window resizing */
 #define LOG_PANEL_HEIGHT 120
 
+/* Window height without log (stored when window opens) */
+static UWORD base_window_height = 0;
+
 /* Timezone selection state */
 static ULONG current_region_idx = 0;
 static ULONG current_city_idx = 0;
@@ -467,7 +470,31 @@ BOOL window_open(struct Screen *screen)
     if (!button_row)
         goto cleanup;
 
-    /* Create root layout */
+    /* Create log listbrowser (always present, hidden by window size) */
+    gad_log = NewObject(LISTBROWSER_GetClass(), NULL,
+        GA_ID, GID_LOG,
+        GA_ReadOnly, TRUE,
+        LISTBROWSER_Labels, (ULONG)&log_browser_list,
+        LISTBROWSER_AutoFit, TRUE,
+        LISTBROWSER_VertSeparators, FALSE,
+        TAG_DONE);
+
+    if (!gad_log)
+        goto cleanup;
+
+    /* Create log panel layout */
+    layout_log = NewObject(LAYOUT_GetClass(), NULL,
+        LAYOUT_Orientation, LAYOUT_ORIENT_VERT,
+        LAYOUT_BevelStyle, BVS_GROUP,
+        LAYOUT_Label, (ULONG)"Log",
+        LAYOUT_SpaceOuter, TRUE,
+        LAYOUT_AddChild, (ULONG)gad_log,
+        TAG_DONE);
+
+    if (!layout_log)
+        goto cleanup;
+
+    /* Create root layout (includes log panel - hidden by window size initially) */
     layout_root = NewObject(LAYOUT_GetClass(), NULL,
         LAYOUT_Orientation, LAYOUT_ORIENT_VERT,
         LAYOUT_SpaceOuter, TRUE,
@@ -479,6 +506,8 @@ BOOL window_open(struct Screen *screen)
         LAYOUT_AddChild, (ULONG)timezone_group,
         LAYOUT_AddChild, (ULONG)button_row,
         CHILD_WeightedHeight, 0,
+        LAYOUT_AddChild, (ULONG)layout_log,
+        CHILD_MinHeight, LOG_PANEL_HEIGHT,
         TAG_DONE);
 
     if (!layout_root)
@@ -507,25 +536,37 @@ BOOL window_open(struct Screen *screen)
         return FALSE;
     }
 
+    /* Store base height and shrink to hide log panel initially */
+    base_window_height = win->Height - LOG_PANEL_HEIGHT;
+    ChangeWindowBox(win, win->LeftEdge, win->TopEdge,
+        win->Width, base_window_height);
+
     log_visible = FALSE;
 
     return TRUE;
 
 cleanup:
-    /* Clean up any partially created objects */
-    if (gad_status) DisposeObject(gad_status);
-    if (gad_last_sync) DisposeObject(gad_last_sync);
-    if (gad_next_sync) DisposeObject(gad_next_sync);
-    if (gad_server) DisposeObject(gad_server);
-    if (gad_interval) DisposeObject(gad_interval);
-    if (gad_region) DisposeObject(gad_region);
-    if (gad_city) DisposeObject(gad_city);
-    if (gad_tz_info) DisposeObject(gad_tz_info);
-    if (gad_log_toggle) DisposeObject(gad_log_toggle);
+    /* Clean up any partially created objects.
+     * Note: Once an object is added to a layout, the layout owns it.
+     * Disposing the parent disposes all children.
+     * Only dispose objects that weren't added to a parent yet.
+     */
+    if (layout_root) {
+        /* layout_root owns everything added to it */
+        DisposeObject(layout_root);
+    } else if (layout_log) {
+        /* layout_log owns gad_log */
+        DisposeObject(layout_log);
+    } else if (gad_log) {
+        DisposeObject(gad_log);
+    }
+    /* Note: status_group, settings_group, timezone_group, button_row
+     * would be owned by layout_root if it was created */
+    layout_root = layout_log = NULL;
     gad_status = gad_last_sync = gad_next_sync = NULL;
     gad_server = gad_interval = NULL;
     gad_region = gad_city = gad_tz_info = NULL;
-    gad_log_toggle = NULL;
+    gad_log = gad_log_toggle = NULL;
     return FALSE;
 }
 
@@ -547,7 +588,7 @@ void window_close(void)
                 LISTBROWSER_Labels, (ULONG)~0,
                 TAG_DONE);
         }
-        if (gad_log && log_visible) {
+        if (gad_log) {
             SetGadgetAttrs((struct Gadget *)gad_log, win, NULL,
                 LISTBROWSER_Labels, (ULONG)~0,
                 TAG_DONE);
@@ -581,6 +622,7 @@ void window_close(void)
     gad_region = gad_city = gad_tz_info = NULL;
     gad_log = gad_log_toggle = NULL;
     log_visible = FALSE;
+    base_window_height = 0;
 }
 
 /* =========================================================================
@@ -609,85 +651,38 @@ ULONG window_signal(void)
 
 static void toggle_log_panel(void)
 {
-    if (!window_obj || !layout_root)
+    if (!win || !base_window_height)
         return;
 
     if (!log_visible) {
-        /* Create log listbrowser */
-        gad_log = NewObject(LISTBROWSER_GetClass(), NULL,
-            GA_ID, GID_LOG,
-            GA_ReadOnly, TRUE,
-            LISTBROWSER_Labels, (ULONG)&log_browser_list,
-            LISTBROWSER_AutoFit, TRUE,
-            LISTBROWSER_VertSeparators, FALSE,
+        /* Show log: expand window to reveal log panel */
+        ChangeWindowBox(win, win->LeftEdge, win->TopEdge,
+            win->Width, base_window_height + LOG_PANEL_HEIGHT);
+
+        /* Update button text */
+        SetGadgetAttrs((struct Gadget *)gad_log_toggle, win, NULL,
+            GA_Text, (ULONG)"Hide Log",
             TAG_DONE);
 
-        if (!gad_log)
-            return;
-
-        /* Create log panel */
-        layout_log = NewObject(LAYOUT_GetClass(), NULL,
-            LAYOUT_Orientation, LAYOUT_ORIENT_VERT,
-            LAYOUT_BevelStyle, BVS_GROUP,
-            LAYOUT_Label, (ULONG)"Log",
-            LAYOUT_SpaceOuter, TRUE,
-            LAYOUT_AddChild, (ULONG)gad_log,
-            CHILD_MinHeight, 100,
-            TAG_DONE);
-
-        if (layout_log) {
-            SetGadgetAttrs((struct Gadget *)layout_root, win, NULL,
-                LAYOUT_AddChild, (ULONG)layout_log,
+        /* Scroll log to bottom if there are entries */
+        if (gad_log && log_count > 0) {
+            SetGadgetAttrs((struct Gadget *)gad_log, win, NULL,
+                LISTBROWSER_MakeVisible, log_count - 1,
                 TAG_DONE);
-
-            /* Update button text */
-            SetGadgetAttrs((struct Gadget *)gad_log_toggle, win, NULL,
-                GA_Text, (ULONG)"Hide Log",
-                TAG_DONE);
-
-            /* Resize window to accommodate log panel */
-            ChangeWindowBox(win, win->LeftEdge, win->TopEdge,
-                win->Width, win->Height + LOG_PANEL_HEIGHT);
-
-            /* Refresh window layout */
-            RethinkLayout((struct Gadget *)layout_root, win, NULL, TRUE);
-
-            log_visible = TRUE;
-        } else {
-            DisposeObject(gad_log);
-            gad_log = NULL;
         }
+
+        log_visible = TRUE;
     } else {
-        /* Remove log panel */
-        if (layout_log) {
-            /* IMPORTANT: Detach list from gadget BEFORE removing */
-            if (gad_log) {
-                SetGadgetAttrs((struct Gadget *)gad_log, win, NULL,
-                    LISTBROWSER_Labels, (ULONG)~0,
-                    TAG_DONE);
-            }
+        /* Hide log: shrink window to clip log panel */
+        ChangeWindowBox(win, win->LeftEdge, win->TopEdge,
+            win->Width, base_window_height);
 
-            /* Update button text first (while layout_log still valid) */
-            SetGadgetAttrs((struct Gadget *)gad_log_toggle, win, NULL,
-                GA_Text, (ULONG)"Show Log",
-                TAG_DONE);
+        /* Update button text */
+        SetGadgetAttrs((struct Gadget *)gad_log_toggle, win, NULL,
+            GA_Text, (ULONG)"Show Log",
+            TAG_DONE);
 
-            /* Shrink window - this effectively hides the log area */
-            ChangeWindowBox(win, win->LeftEdge, win->TopEdge,
-                win->Width, win->Height - LOG_PANEL_HEIGHT);
-
-            /* Remove from parent layout AFTER window shrink */
-            SetGadgetAttrs((struct Gadget *)layout_root, win, NULL,
-                LAYOUT_RemoveChild, (ULONG)layout_log,
-                TAG_DONE);
-
-            /* Now safe to dispose */
-            DisposeObject(layout_log);
-            layout_log = NULL;
-            gad_log = NULL;
-
-            log_visible = FALSE;
-        }
+        log_visible = FALSE;
     }
 }
 
