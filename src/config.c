@@ -22,14 +22,17 @@ static void set_defaults(void)
 {
     LONG i;
     const char *src = DEFAULT_SERVER;
+    const char *tz_src = DEFAULT_TIMEZONE;  /* "America/Los_Angeles" */
 
     for (i = 0; i < SERVER_NAME_MAX - 1 && src[i] != '\0'; i++)
         current_config.server[i] = src[i];
     current_config.server[i] = '\0';
 
     current_config.interval = DEFAULT_INTERVAL;
-    current_config.timezone = DEFAULT_TIMEZONE;
-    current_config.dst      = DEFAULT_DST;
+
+    for (i = 0; i < (LONG)sizeof(current_config.tz_name) - 1 && tz_src[i] != '\0'; i++)
+        current_config.tz_name[i] = tz_src[i];
+    current_config.tz_name[i] = '\0';
 }
 
 /* =========================================================================
@@ -142,17 +145,21 @@ static void parse_line(const char *line)
         }
 
     } else if (strncmp(line, "TIMEZONE=", 9) == 0) {
-        val = parse_int(line + 9, &ok);
-        if (ok) {
-            if (val < MIN_TIMEZONE) val = MIN_TIMEZONE;
-            if (val > MAX_TIMEZONE) val = MAX_TIMEZONE;
-            current_config.timezone = val;
-        }
+        const char *src = line + 9;
+        LONG i;
 
-    } else if (strncmp(line, "DST=", 4) == 0) {
-        val = parse_int(line + 4, &ok);
-        if (ok) {
-            current_config.dst = (val != 0) ? TRUE : FALSE;
+        for (i = 0; i < (LONG)sizeof(current_config.tz_name) - 1 && src[i] != '\0'; i++)
+            current_config.tz_name[i] = src[i];
+        current_config.tz_name[i] = '\0';
+
+        /* Strip trailing whitespace and newlines */
+        while (i > 0 &&
+               (current_config.tz_name[i - 1] == '\n' ||
+                current_config.tz_name[i - 1] == '\r' ||
+                current_config.tz_name[i - 1] == ' '  ||
+                current_config.tz_name[i - 1] == '\t')) {
+            i--;
+            current_config.tz_name[i] = '\0';
         }
     }
 }
@@ -186,14 +193,7 @@ static BOOL save_to_path(const char *path)
 
     /* TIMEZONE= */
     FPuts(fh, "TIMEZONE=");
-    int_to_str(current_config.timezone, buf);
-    FPuts(fh, buf);
-    FPuts(fh, "\n");
-
-    /* DST= */
-    FPuts(fh, "DST=");
-    int_to_str(current_config.dst ? 1 : 0, buf);
-    FPuts(fh, buf);
+    FPuts(fh, current_config.tz_name);
     FPuts(fh, "\n");
 
     Close(fh);
@@ -276,16 +276,15 @@ void config_set_interval(LONG interval)
     current_config.interval = interval;
 }
 
-/* config_set_timezone: set with clamping */
-void config_set_timezone(LONG tz)
+/* config_set_tz_name: set IANA timezone name */
+void config_set_tz_name(const char *name)
 {
-    if (tz < MIN_TIMEZONE) tz = MIN_TIMEZONE;
-    if (tz > MAX_TIMEZONE) tz = MAX_TIMEZONE;
-    current_config.timezone = tz;
-}
+    LONG i;
 
-/* config_set_dst: set boolean */
-void config_set_dst(BOOL enabled)
-{
-    current_config.dst = enabled ? TRUE : FALSE;
+    if (!name)
+        return;
+
+    for (i = 0; i < (LONG)sizeof(current_config.tz_name) - 1 && name[i] != '\0'; i++)
+        current_config.tz_name[i] = name[i];
+    current_config.tz_name[i] = '\0';
 }
