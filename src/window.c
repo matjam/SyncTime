@@ -14,13 +14,18 @@
 #define GID_STATUS     0
 #define GID_LAST_SYNC  1
 #define GID_NEXT_SYNC  2
-#define GID_SERVER     3
-#define GID_INTERVAL   4
-#define GID_TIMEZONE   5
-#define GID_DST        6
-#define GID_SYNC       7
-#define GID_SAVE       8
-#define GID_HIDE       9
+#define GID_LOG        3
+#define GID_SERVER     4
+#define GID_INTERVAL   5
+#define GID_TIMEZONE   6
+#define GID_DST        7
+#define GID_SYNC       8
+#define GID_SAVE       9
+#define GID_HIDE       10
+
+/* Log system */
+#define LOG_MAX_ENTRIES 50
+#define LOG_LINE_LEN    64
 
 /* =========================================================================
  * Timezone cycle labels (NULL-terminated for GadTools CYCLE_KIND)
@@ -46,6 +51,7 @@ static APTR vi              = NULL;   /* VisualInfo */
 static struct Gadget *gad_status    = NULL;
 static struct Gadget *gad_last_sync = NULL;
 static struct Gadget *gad_next_sync = NULL;
+static struct Gadget *gad_log       = NULL;
 static struct Gadget *gad_server    = NULL;
 static struct Gadget *gad_interval  = NULL;
 static struct Gadget *gad_timezone  = NULL;
@@ -56,9 +62,40 @@ static LONG local_tz_index  = 0;
 static BOOL local_dst       = FALSE;
 static BOOL config_changed  = FALSE;
 
+/* Log entries stored as Exec List of Node structures */
+static struct List log_list;
+static LONG log_count = 0;
+
+/* Log node structure - Node followed by text buffer */
+struct LogNode {
+    struct Node node;
+    char text[LOG_LINE_LEN];
+};
+
+static struct LogNode log_nodes[LOG_MAX_ENTRIES];
+static LONG log_next_slot = 0;
+
 /* =========================================================================
  * window_open -- create and display the GadTools configuration window
  * ========================================================================= */
+
+/* Initialize log list (called once) */
+static BOOL log_initialized = FALSE;
+static void init_log_list(void)
+{
+    LONG i;
+    if (log_initialized)
+        return;
+    NewList(&log_list);
+    for (i = 0; i < LOG_MAX_ENTRIES; i++) {
+        log_nodes[i].node.ln_Succ = NULL;
+        log_nodes[i].node.ln_Pred = NULL;
+        log_nodes[i].text[0] = '\0';
+    }
+    log_next_slot = 0;
+    log_count = 0;
+    log_initialized = TRUE;
+}
 
 BOOL window_open(struct Screen *screen)
 {
@@ -71,6 +108,9 @@ BOOL window_open(struct Screen *screen)
     SyncConfig *cfg;
 
     (void)screen;  /* Not used -- we lock the default public screen */
+
+    /* Initialize log list if needed */
+    init_log_list();
 
     if (win)
         return TRUE;   /* Already open */
@@ -150,6 +190,24 @@ BOOL window_open(struct Screen *screen)
         GTTX_Border, TRUE,
         TAG_DONE);
     y += spacing;
+
+    /* Extra gap before log */
+    y += 4;
+
+    /* ---- Log (LISTVIEW_KIND) ---- */
+    ng.ng_TopEdge    = y;
+    ng.ng_GadgetText = "Log:";
+    ng.ng_GadgetID   = GID_LOG;
+    ng.ng_Height     = fonth * 5 + 4;  /* 5 lines visible */
+    gad_log = gad = CreateGadget(LISTVIEW_KIND, gad, &ng,
+        GTLV_Labels,     (ULONG)&log_list,
+        GTLV_ReadOnly,   TRUE,
+        GTLV_ScrollWidth, 16,
+        TAG_DONE);
+    y += ng.ng_Height + 4;
+
+    /* Reset height for other gadgets */
+    ng.ng_Height = fonth + 4;
 
     /* Extra gap before editable section */
     y += 4;
@@ -235,7 +293,7 @@ BOOL window_open(struct Screen *screen)
         glist = NULL;
         FreeVisualInfo(vi);
         vi = NULL;
-        gad_status = gad_last_sync = gad_next_sync = NULL;
+        gad_status = gad_last_sync = gad_next_sync = gad_log = NULL;
         gad_server = gad_interval = gad_timezone = gad_dst = NULL;
         UnlockPubScreen(NULL, pub);
         return FALSE;
@@ -265,7 +323,7 @@ BOOL window_open(struct Screen *screen)
         glist = NULL;
         FreeVisualInfo(vi);
         vi = NULL;
-        gad_status = gad_last_sync = gad_next_sync = NULL;
+        gad_status = gad_last_sync = gad_next_sync = gad_log = NULL;
         gad_server = gad_interval = gad_timezone = gad_dst = NULL;
         UnlockPubScreen(NULL, pub);
         return FALSE;
@@ -299,6 +357,7 @@ void window_close(void)
     gad_status    = NULL;
     gad_last_sync = NULL;
     gad_next_sync = NULL;
+    gad_log       = NULL;
     gad_server    = NULL;
     gad_interval  = NULL;
     gad_timezone  = NULL;
@@ -424,4 +483,49 @@ void window_update_status(SyncStatus *st)
         GTTX_Text, (ULONG)st->last_sync_text, TAG_DONE);
     GT_SetGadgetAttrs(gad_next_sync, win, NULL,
         GTTX_Text, (ULONG)st->next_sync_text, TAG_DONE);
+}
+
+/* =========================================================================
+ * window_log -- add an entry to the scrollable log
+ * ========================================================================= */
+
+void window_log(const char *message)
+{
+    struct LogNode *node;
+    LONG i;
+
+    /* Get next slot (circular buffer) */
+    node = &log_nodes[log_next_slot];
+
+    /* If this node is already in the list, remove it */
+    if (node->node.ln_Succ != NULL) {
+        Remove(&node->node);
+    }
+
+    /* Copy message text */
+    for (i = 0; i < LOG_LINE_LEN - 1 && message[i] != '\0'; i++) {
+        node->text[i] = message[i];
+    }
+    node->text[i] = '\0';
+
+    /* Set up node */
+    node->node.ln_Name = node->text;
+    node->node.ln_Type = 0;
+    node->node.ln_Pri = 0;
+
+    /* Add to end of list */
+    AddTail(&log_list, &node->node);
+
+    /* Advance slot */
+    log_next_slot = (log_next_slot + 1) % LOG_MAX_ENTRIES;
+    if (log_count < LOG_MAX_ENTRIES)
+        log_count++;
+
+    /* Update listview if window is open */
+    if (win && gad_log) {
+        GT_SetGadgetAttrs(gad_log, win, NULL,
+            GTLV_Labels, (ULONG)&log_list,
+            GTLV_Top, log_count > 5 ? log_count - 5 : 0,  /* Auto-scroll to bottom */
+            TAG_DONE);
+    }
 }

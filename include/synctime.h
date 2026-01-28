@@ -148,6 +148,7 @@ BOOL  window_is_open(void);
 BOOL  window_handle_events(SyncConfig *cfg, SyncStatus *st);  /* Returns TRUE if "Sync Now" requested */
 ULONG window_signal(void);
 void  window_update_status(SyncStatus *st);
+void  window_log(const char *message);  /* Add entry to scrollable log */
 
 /* =========================================================================
  * Globals (main.c)

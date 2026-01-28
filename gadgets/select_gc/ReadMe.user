@@ -1,0 +1,50 @@
+
+How to configure the global look and behavior of the "selectgclass" gadgets
+===========================================================================
+
+The default values for the most significant attributes defining the look
+and feel of the gadgets can be globally set by the user in a preferences
+file, called "ENV:Gadgets/select.prefs".
+
+The attribute values found in the preferences file override the built-in
+default values for the corresponding tags; if an attribute isn't present
+in the file, or if the file is not found, it will keep using the value
+most recently set (the initial one being the built-in default).
+
+As the preferences file is just ASCII text, you can edit it by hand to
+change the desired attributes. The format of the file is very simple; it
+is a list of tool types (named exactly like the corresponding "selectgclass"
+tags, minus the SGA_ prefix). See the class documentation for a detailed
+explanation of the attributes and their possible values.
+
+An example of file would be:
+
+   ItemSpacing=3
+   FullWidth=1
+   PopUpDelay=250
+
+As of now, the attributes settable by the user are the following ones ("inf"
+means "infinite"):
+
+Attribute    Range      Type       Default  Meaning
+
+MinItems     [ 1..inf]  (integer)  1        Min. num. of items to pop-up
+FullPopUp    [ 0, 1  ]  (boolean)  0        Entire gadget triggers pop-up?
+PopUpDelay   [ 0..inf]  (integer)  0        Delay before opening pop-up menu
+PopUpPos     [ 0..3  ]  (integer)  0        Position of the pop-up menu
+Sticky       [ 0, 1  ]  (boolean)  0        Is the gadget "sticky"?
+Justify      [ 0..2  ]  (integer)  1        How to justify active item label
+Separator    [ 0, 1  ]  (boolean)  1        Show separator line in gadget?
+DropShadow   [ 0, 1  ]  (boolean)  0        Show drop shadow under menu?
+ItemSpacing  [ 0..inf]  (integer)  0        How much to increase item height
+ListJustify  [ 0..2  ]  (integer)  1        How to justify items in menu
+ActiveBox    [-1..1  ]  (integer)  0        How to display highlighted item
+BorderSize   [-1..inf]  (integer) -1        Thickness of menu border; -1=auto
+FullWidth    [ 0, 1  ]  (boolean)  0        Menu wide as entire gadget?
+FollowMode   [ 0..2  ]  (integer)  0        How to highlight when not on menu
+PanelMode    [ 0..2  ]  (integer)  0        How to do rendering of menu panel
+MinTime      [ 0..inf]  (integer)  0        Min. duration of menu opening
+MaxTime      [ 0..inf]  (integer)  0        Max. duration of menu opening
+Transparent  [ 0, 1  ]  (boolean)  0        Transparent menu background?
+
+

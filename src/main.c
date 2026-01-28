@@ -196,19 +196,35 @@ static void cleanup_commodity(void)
 /* =========================================================================
  * perform_sync - Execute a single NTP synchronization
  *
- * Updates status display at each step for user feedback.
+ * Logs each step to the scrollable log and updates status on completion.
  * ========================================================================= */
 
 /* Re-entrancy guard */
 static BOOL sync_in_progress = FALSE;
 
-/* Helper to update status text and refresh window */
-static void update_status(int status_code, const char *text)
+/* Helper to update main status field */
+static void set_status(int status_code, const char *text)
 {
     sync_status.status = status_code;
     strcpy(sync_status.status_text, text);
     if (window_is_open())
         window_update_status(&sync_status);
+}
+
+/* Helper to format IP address into buffer */
+static void format_ip(ULONG ip_addr, char *buf)
+{
+    UBYTE *ip = (UBYTE *)&ip_addr;
+    int i, val, pos = 0;
+
+    for (i = 0; i < 4; i++) {
+        val = ip[i];
+        if (val >= 100) { buf[pos++] = '0' + (val / 100); val %= 100; }
+        if (val >= 10 || ip[i] >= 100) { buf[pos++] = '0' + (val / 10); val %= 10; }
+        buf[pos++] = '0' + val;
+        if (i < 3) buf[pos++] = '.';
+    }
+    buf[pos] = '\0';
 }
 
 static void perform_sync(void)
@@ -220,82 +236,94 @@ static void perform_sync(void)
     ULONG ntp_frac;
     LONG bytes;
     ULONG amiga_secs;
+    char msg[64];
 
     /* Prevent re-entrancy */
-    if (sync_in_progress)
+    if (sync_in_progress) {
+        window_log("Sync already in progress, skipping");
         return;
+    }
     sync_in_progress = TRUE;
 
     /* Get current configuration */
     cfg = config_get();
 
     /* Step 1: Resolve server hostname */
-    update_status(STATUS_SYNCING, "Resolving server...");
+    set_status(STATUS_SYNCING, "Syncing...");
+    strcpy(msg, "Resolving ");
+    {
+        int i;
+        for (i = 0; i < 40 && cfg->server[i]; i++)
+            msg[10 + i] = cfg->server[i];
+        msg[10 + i] = '\0';
+    }
+    window_log(msg);
+
     if (!network_resolve(cfg->server, &ip_addr)) {
-        update_status(STATUS_ERROR, "DNS lookup failed");
+        window_log("ERROR: DNS lookup failed");
+        set_status(STATUS_ERROR, "DNS failed");
         sync_in_progress = FALSE;
         return;
     }
 
-    /* Show resolved IP for debugging */
-    {
-        char ip_msg[48];
-        UBYTE *ip = (UBYTE *)&ip_addr;
-        int i, val, pos;
-        strcpy(ip_msg, "Sending to ");
-        pos = 11;
-        /* Manual IP formatting since no sprintf */
-        for (i = 0; i < 4; i++) {
-            val = ip[i];
-            if (val >= 100) { ip_msg[pos++] = '0' + (val / 100); val %= 100; }
-            if (val >= 10 || ip[i] >= 100) { ip_msg[pos++] = '0' + (val / 10); val %= 10; }
-            ip_msg[pos++] = '0' + val;
-            if (i < 3) ip_msg[pos++] = '.';
-        }
-        ip_msg[pos++] = '.';
-        ip_msg[pos++] = '.';
-        ip_msg[pos++] = '.';
-        ip_msg[pos] = '\0';
-        update_status(STATUS_SYNCING, ip_msg);
-    }
+    /* Log resolved IP */
+    strcpy(msg, "Resolved to ");
+    format_ip(ip_addr, msg + 12);
+    window_log(msg);
 
     /* Step 2: Build and send SNTP request packet */
+    window_log("Sending NTP request to port 123...");
     sntp_build_request(packet);
     if (!network_send_udp(ip_addr, NTP_PORT, packet, NTP_PACKET_SIZE)) {
-        update_status(STATUS_ERROR, "Send failed");
+        window_log("ERROR: Failed to send UDP packet");
+        set_status(STATUS_ERROR, "Send failed");
         sync_in_progress = FALSE;
         return;
     }
-    update_status(STATUS_SYNCING, "Packet sent, waiting...");
+    window_log("Request sent, waiting for response...");
 
-    /* Step 3: Wait for response */
+    /* Step 3: Wait for response (5 second timeout) */
     bytes = network_recv_udp(packet, NTP_PACKET_SIZE, 5);
-    if (bytes < NTP_PACKET_SIZE) {
-        update_status(STATUS_ERROR, "No response (timeout)");
+    if (bytes < 0) {
+        window_log("ERROR: Timeout waiting for response");
+        set_status(STATUS_ERROR, "Timeout");
         sync_in_progress = FALSE;
         return;
     }
+    if (bytes < NTP_PACKET_SIZE) {
+        window_log("ERROR: Response too short");
+        set_status(STATUS_ERROR, "Bad response");
+        sync_in_progress = FALSE;
+        return;
+    }
+    window_log("Received 48-byte response");
 
     /* Step 4: Parse SNTP response */
-    update_status(STATUS_SYNCING, "Parsing response...");
+    window_log("Parsing NTP response...");
     if (!sntp_parse_response(packet, &ntp_secs, &ntp_frac)) {
-        update_status(STATUS_ERROR, "Invalid NTP response");
+        window_log("ERROR: Invalid NTP packet format");
+        set_status(STATUS_ERROR, "Invalid response");
         sync_in_progress = FALSE;
         return;
     }
+    window_log("Response valid, extracting time...");
 
     /* Step 5: Convert NTP time to Amiga time */
     amiga_secs = sntp_ntp_to_amiga(ntp_secs, cfg->timezone, cfg->dst);
 
     /* Step 6: Set the system clock */
-    update_status(STATUS_SYNCING, "Setting clock...");
+    window_log("Setting system clock...");
     if (!clock_set_system_time(amiga_secs, 0)) {
-        update_status(STATUS_ERROR, "Clock set failed");
+        window_log("ERROR: Failed to set system time");
+        set_status(STATUS_ERROR, "Clock set failed");
         sync_in_progress = FALSE;
         return;
     }
 
-    /* Success: update sync status with timestamps */
+    /* Success! */
+    window_log("Clock synchronized successfully!");
+
+    /* Update sync status with timestamps */
     sync_status.status = STATUS_OK;
     strcpy(sync_status.status_text, "Synchronized");
     sync_status.last_sync_secs = amiga_secs;

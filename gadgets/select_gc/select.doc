@@ -1,0 +1,1044 @@
+TABLE OF CONTENTS
+
+select.gadget/--background--
+select.gadget/select.gadget
+select.gadget/ClearSelectGadget
+select.gadget/GetSGAttr
+select.gadget/InitSelectGadgetA
+select.gadget/ObtainSelectGClass
+select.gadget/SetSGAttrsA
+select.gadget/--background--                     select.gadget/--background--
+
+DESCRIPTION
+
+The select.gadget is a shared library which, when opened, adds to the system
+a public BOOPSI gadget class called "selectgclass". This class implements a
+button-like selection gadget, with features similar to those of a traditional
+GadTools cycle gadget, but with the additional ability to open, when pressed,
+a pop-up menu which allows the user to pick his choice more easily.
+
+The look and behavior of the gadget and its pop-up menu can be configured
+using the attribute tags of the class.
+
+The library is freeware; if you use it, you are allowed to distribute it
+with your software.
+
+Some highlights:
+
+- A delay can be set for the appearance of the pop-up menu, allowing for a
+  gadget which reacts like a normal cycle gadget upon "quick" clicks, and
+  like a pop-up gadget if the mouse button is kept pressed a little longer.
+  
+- The pop-up menu can appear and disappear with a vertical "zoom" effect
+  whose duration is configurable.
+  
+- The gadget can be programmatically activated, for instance to make it
+  react to a keypress.
+  
+- Once opened, the pop-up menu can be controlled by keyboard.
+
+- It is optionally possible to have a "sticky" pop-up menu which remains
+  open when the mouse button is released.
+
+- The gadget can be made "quiet", that is, the currently selected item can be
+  not displayed. Useful to attach a small pop-up button to string gadgets.
+
+- The gadget can be configured to always behave like a cycle gadget, and
+  even like a plain button gadget.
+
+- The gadget can broadcast changes in its value to target objects via the
+  BOOPSI notification system.
+
+- All changes done with SetGadgetAttrsA() to the gadget's position, size
+  and look are visually executed in real-time.
+  
+- The gadget's dispatcher is able to swap the stack when needed.
+
+- The gadget can be added to requesters and window borders.
+
+- The pop-up menu can have a drop shadow.
+
+- The gadget's "pop-up" symbol can be placed at the left side, at the right
+  side, or it can also not appear at all; its width is also configurable.
+  The gadget's default imagery for the symbol is fully scalable, and it can
+  be replaced by the application with a custom image.
+  
+- The default values for unspecified attributes can be globally set by the
+  user with an ASCII preferences file; the changes are applied in real-time
+  (to gadgets created afterwards) via file notification.
+
+Furthermore, the library offers some functions which allow to "transform"
+a normal gadget into a custom gadget having (almost) the same features of
+the "selectgclass" gadgets.
+
+This way it's possible, for example, to create GadTools GENERIC_KIND gadgets
+and turn them into pop-up gadgets, obtaining all the benefits of this type
+of gadgets while also keeping the benefits of the GadTools automatic gadget
+creation (and deletion) system.
+
+Lastly, this gadget class supports VisualPrefs and takes full advantage of
+the graphic enhancements it brings to the system.
+
+
+CLASS DOCUMENTATION
+
+Class:        selectgclass
+Superclass:   gadgetclass
+Include File: <gadgets/select.h>
+
+A BOOPSI pop-up gadget which can also behave as a GadTools-like cycle gadget
+or even as a normal button gadget. The selectgclass gadget keeps its current
+active item value in its SGA_Active attribute, and when it changes because
+of user's interaction a notification message is sent to its target and also
+(optionally) an IDCMP_GADGETUP message is sent to its window's UserPort.
+
+Starting with version 40.18, the gadget can also be programmatically
+activated by using the ActivateGadget() function; this can be used, for
+instance, to make it respond to keypresses. Once opened, the pop-up menu
+can be controlled by keyboard, using the up/down arrow keys to change the
+active item, and the RETURN key to select it, or the ESC key to abort
+the operation.
+
+New Methods:
+
+None.
+
+Changed Methods:
+
+OM_NEW - After creation of the gadget by the superclass, this method
+initializes the "selectgclass" instance data on the basis of the contents
+of the attributes tag list.
+
+OM_DISPOSE - This method frees all the resources allocated in the OM_NEW
+method.
+
+OM_SET, OM_UPDATE - The gadget will automatically refresh its graphic
+appearance to reflect any changes to visual attributes, such as the active
+item, the gadget position and size, and the gadget text. In particular,
+when the gadget is moved, it first erases itself at the old position.
+
+GM_RENDER - The rendering of the various "selectgclass" gadget components
+(frame, symbol, label, text) is made in a very optimized way. The gadget
+clips its graphics at the window borders, and avoids as much as possible
+to redraw a single pixel more than once. If gpRender.gpr_Redraw has the
+value GREDRAW_UPDATE the gadget redraws only the frame and its contents,
+otherwise it also redraws the text.
+
+GM_HITTEST - This method currently always returns GMR_GADGETHIT, but don't
+count on this being the case also in future versions.
+
+GM_GOACTIVE - In this method some precalculations are made and cached, to
+speed up the GM_HANDLEINPUT method.
+
+GM_HANDLEINPUT - If the user clicks with the mouse select button on the
+"pop-up" zone of the gadget (which can be the entire gadget box, or just
+a part of it, depending on the value of the SGA_FullPopUp tag), an internal
+timer starts.
+
+If the button is released before the pop-up delay (set with SGA_PopUpDelay)
+expires, the gadget behaves exactly as a GadTools cycle gadget would: if the
+mouse pointer was within the gadget box when the button was released, the
+gadget's active item changes, and the change is reported to the application
+via an IDCMP_GADGETUP IntuiMessage and/or to the gadget's target object via
+an OM_UPDATE message.
+
+If, instead, the mouse button is kept pressed long enough, a pop-up menu
+appears, showing all the available items. However, if the gadget has too few
+items (the threshold can be set with the SGA_MinItems tag) the menu doesn't
+appear, and the gadget keeps behaving like a cycle gadget.
+
+When the menu is displayed, the user can select any of the displayed items
+just by moving the mouse pointer on it and releasing the mouse select button.
+Alternatively, if the pop-up menu is of the "sticky" type, the user must
+first release the mouse button, then move the pointer on the desired choice
+and press the button again.
+
+The menu panel can also be controlled by keyboard: the up and down arrow
+keys allow to change the active item, the RETURN key can be used to select
+it and close the panel, and the ESC key can be used to abort the operation.
+
+If the selected item is different from the previously active one, or if
+the SGA_ReportAll attribute is set to TRUE, the new active value is reported
+to the application via an IDCMP_GADGETUP IntuiMessage and/or to the gadget's
+target object via an OM_UPDATE message.
+
+If the mouse select button is initially clicked with the pointer not on
+the "pop-up" zone of the gadget, the pop-up menu doesn't appear, and the
+gadget behaves like a GadTools cycle gadget, no matter how long the button
+is kept pressed.
+
+As with GadTools, a SHIFT qualifier causes the gadget to cycle backwards.
+
+The gadget reports changes in its SGA_Active attribute value to the
+application by sending an IDCMP_GADGETUP IntuiMessage to the UserPort
+of its window. The IntuiMessage.Code field contains the new value of
+the attribute.
+
+The gadget reports changes in its SGA_Active attribute value to its
+target object by sending it an OM_UPDATE message. The message's attribute
+tag list contains the new value of the attribute and the ID of the gadget.
+
+Any operation being made with the "selectgclass" gadget can always be aborted
+by pressing the right (menu) button of the mouse.
+
+GM_GOINACTIVE - This method does a clean-up after the GM_GOACTIVE method.
+
+GM_LAYOUT - In this method, a "selectgclass" gadget does all necessary
+calculations to prepare itself for rendering and user interaction.
+This method fully supports the Intuition relativity flags (GFLG_RELRIGHT,
+GFLG_RELBOTTOM, GFLG_RELWIDTH and GFLG_RELHEIGHT).
+
+Attributes:
+
+GA_Image (IS) - The image the gadget will use to render its frame. If this
+                attribute is not specified, or if it's NULL, a default image
+                will be used (namely, an instance of "frameiclass").
+                If it's set to ~0 (or -1) no image will be rendered.
+                The gadget renders its frame image with the IM_DRAWFRAME
+                method when possible, so it would be a good idea to have
+                your custom image support this.
+                Changing this attribute causes the gadget to be redrawn.
+
+GA_Text, GA_IntuiText, GA_LabelImage (IS) - The gadget supports all of these
+                                            methods of specifying a text.
+                                            Changing one of these attributes
+                                            causes the gadget to be redrawn.
+                                            See also SGA_TextPlace (below).
+                                             
+GA_Left, GA_RelRight, GA_Top, GA_RelBottom (IS) - The gadget supports both
+                                                  absolute and relative
+                                                  positioning. Changing one
+                                                  of these attributes causes
+                                                  the gadget to be redrawn,
+                                                  with its old imagery being
+                                                  erased first.
+                                                   
+GA_Width, GA_RelWidth, GA_Height, GA_RelHeight (IS) - The gadget supports
+                                                      both absolute and
+                                                      relative sizing.
+                                                      Changing one of these
+                                                      attributes causes the
+                                                      gadget to be redrawn,
+                                                      with its old imagery
+                                                      being erased first.
+                                                      
+GA_DrawInfo (I) - A pointer to your screen's DrawInfo structure. If this
+                  attribute is specified, and the tag list doesn't contain
+                  any explicit information about the gadget's size, the
+                  gadget will automatically size itself just large enough to
+                  frame its contents. This can work for just one axis, or
+                  both, depending on which ones have an explicitly specified
+                  size. This attribute is only used at creation time; you
+                  don't need to specify it if you do not want the automatic
+                  sizing feature.
+                  
+GA_ReadOnly (ISU) - If TRUE, the gadget will be non-selectable, and if its
+                    imagery supports the IA_Recessed attribute, it will be
+                    rendered with a recessed frame. This way you can have
+                    for instance a display gadget with a list of possible
+                    messages, and change which message is displayed by using
+                    the SGA_Active tag. Defaults to FALSE.
+                    Changing this attribute causes the gadget to be redrawn.
+                    (V40.18)
+                    
+GA_ActivateKey (ISGU) - The keyboard shortcut assigned to the gadget. This
+                        attribute can be read at any time to check if the
+                        gadget should be activated after a specific keyboard
+                        event has been received by the application. This
+                        makes it easier to process many different gadgets
+                        within an event loop. The value of this attribute is
+                        a STRPTR, however only the first character is used.
+                        Defaults to NULL. (V40.18)
+
+GA_TextAttr (ISU) - Equivalent to SGA_TextAttr (see below).
+
+GA_Underscore (ISU) - Equivalent to SGA_Underscore (see below).
+
+SGA_Active (ISGNU) - The index number (starting from zero) of the current
+                     active item. The default value is zero.
+                     Changing this attribute causes the gadget to be redrawn.
+
+SGA_Labels (ISU) - A NULL-terminated string array containing all the item
+                   labels for the gadget. It can safely be empty. If this
+                   attribute is not specified, or if it's NULL, the gadget
+                   will look and behave like a traditional button gadget.
+                   Changing this attribute causes the gadget to be redrawn.
+
+SGA_MinItems (ISGU) - The minimum number of items the gadget must have for
+                      the pop-up menu to appear. If the items are fewer than
+                      this, the gadget will always behave like a traditional
+                      GadTools cycle gadget. The default is zero.
+
+SGA_FullPopUp (ISU) - If TRUE, clicking anywhere on the gadget box will
+                      cause the pop-up menu to appear (after the requested
+                      delay). If FALSE, clicking on the "symbol box" (if
+                      one exists) will make the gadget behave like a GadTools
+                      cycle gadget. Defaults to FALSE.
+
+SGA_PopUpDelay (ISU) - The amount of time (in milliseconds) the gadget must
+                       remain pressed for the pop-up menu to appear. If this
+                       is zero, the pop-up menu will appear immediately and
+                       the gadget won't even change to its "pressed" state.
+                       Defaults to zero.
+                       
+SGA_PopUpPos (ISU) - This attribute determines where the pop-up menu is to
+                     appear, relative to the gadget's position. It may have
+                     four different values:
+                     SGPOS_ONITEM - position the menu so that the active item
+                                    is under the mouse pointer.
+                     SGPOS_ONTOP - always align the top edge of the menu with
+                                   the top edge of the gadget.
+                     SGPOS_BELOW - place the menu just below the gadget.
+                     SGPOS_RIGHT - place the menu at the right side of gadget,
+                                   aligning its top edge with the gadget's
+                                   top edge.
+                     With the exception of SGPOS_RIGHT, all the values center
+                     the menu horizontally on the "pop-up" zone of the gadget.
+                     The default is SGPOS_ONITEM.
+
+SGA_MinTime (ISU) - The minimum duration of the menu panel's opening/closing
+                    animation effect, in milliseconds. You can set this to a
+                    value greater than zero to make sure the effect can be
+                    noticed even with gadgets having a very small number of
+                    items. The default is zero. (V40.14)
+                    
+SGA_MaxTime (ISU) - The maximum duration of the menu panel's opening/closing
+                    animation effect, in milliseconds. You can set this to a
+                    small value to make sure the effect doesn't take too much
+                    time with gadgets having a very large number of items.
+                    If set to zero, the effect doesn't take place at all.
+                    The default is zero. (V40.14)
+
+SGA_Sticky (ISU) - If FALSE, the pop-up menu will close as soon as the user
+                   releases the mouse button. If TRUE, the menu will remain
+                   open after the button is released, and will close when the
+                   user clicks on it to select an item, or somewhere else to
+                   abort the operation. Defaults to FALSE.
+                   Changing this attribute causes the gadget to be redrawn
+                   (to change the symbol image), unless you are using a
+                   custom symbol.
+
+SGA_PanelMode (ISU) - This attribute specifies the way the menu panel will
+                      be rendered to the screen. It can have three different
+                      values:
+                      SGPM_WINDOW - the panel will be a normal Intuition
+                                    window. This is the most system-friendly
+                                    mode, and does not block graphic output
+                                    to the screen, but it's also slower and
+                                    more sluggish than the other two modes.
+                      SGPM_DIRECT_NB - the panel will be rendered directly to
+                                       the screen's bitmap, without blocking
+                                       graphic output to the screen.
+                      SGPM_DIRECT_B - the panel will be rendered directly to
+                                      the screen's bitmap, blocking graphic
+                                      output to the screen.
+                      The last two modes give a very smoother visual feedback
+                      (especially with the opening/closing animation effect)
+                      but might also cause unexpected results under some rare
+                      circumstances. The default is SGPM_WINDOW. (V40.14)
+
+SGA_TextAttr (ISU) - Pointer to a TextAttr structure describing the font
+                     to be used for the gadget's text and labels. The font
+                     must be already in memory and openable with OpenFont();
+                     if not, the screen font will be used instead.
+                     This attribute is overridden by SGA_TextFont.
+                     Changing this attribute causes the gadget to be redrawn,
+                     unless there's a valid font specified with SGA_TextFont.
+
+SGA_TextFont (ISU) - Pointer to a TextFont structure which is to be used for
+                     rendering the gadget's text and labels. This overrides
+                     the SGA_TextAttr attribute. If both attributes are NULL
+                     or not specified, the screen font will be used.
+                     The font whose pointer you pass with this tag must
+                     remain open for the whole life of the gadget.
+                     Changing this attribute causes the gadget to be redrawn.
+
+SGA_TextPlace (ISGU) - The position at which the gadget's text is to be
+                       rendered. It can assume one of the five PLACETEXT_#?
+                       values defined in <libraries/gadtools.h>. If this is
+                       not specified, PLACETEXT_LEFT is assumed, unless the
+                       gadget has no items (that is, it's a button gadget)
+                       in which case PLACETEXT_IN is assumed.
+                       This works also if the text is really an image label.
+                       Changing this attribute causes the gadget to be
+                       redrawn, with the text in the new position.
+                       Note: currenty this attribute MUST be specified if the
+                       gadget uses an IntuiText for its text, whereas it is
+                       optional if the text is a string or an image label.
+                       
+SGA_Underscore (ISU) - The symbol preceding the character in the gadget text
+                       to be underscored. This can be to indicate keyboard
+                       equivalents for gadgets (note that "selectgclass" does
+                       not process the keys; it just displays the underscore).
+                       This attribute is only used if the gadget text is a
+                       simple string; if you use an IntuiText or an image,
+                       you must provide your own underscoring.
+                       The value of this attribute is a simple UBYTE.
+                       Changing this attribute causes the gadget to be
+                       redrawn.
+
+SGA_Justify (ISU) - The alignment of the active label within the "text zone"
+                    of the gadget box. It can be SGJ_LEFT, SGJ_CENTER or
+                    SGJ_RIGHT. The default is SGJ_CENTER.
+                    Changing this attribute causes the gadget to be redrawn.
+                    Note: SGJ_RIGHT is not yet implemented.
+
+SGA_Quiet (ISU) - If TRUE, the gadget's active label will not be displayed
+                  within the gadget box. Defaults to FALSE.
+                  Changing this attribute causes the gadget to be redrawn.
+
+SGA_Symbol (ISU) - Pointer to a standard or BOOPSI image structure, to be
+                   used as the "pop-up" symbol (akin to the "cycle" symbol
+                   of GadTools cycle gadgets) which is usually displayed
+                   at the left or right side of a "selectgclass" gadget.
+                   The image, if BOOPSI, is rendered within the symbol box
+                   using the IM_DRAWFRAME method, so try to support this.
+                   If NULL or not specified, a default (scalable) internal
+                   image will be used, whose look depends on the gadget type
+                   (sticky or non-sticky).
+                   If this is ~0 (or -1) no symbol will be displayed.
+                   Changing this attribute causes the gadget to be redrawn.
+
+SGA_SymbolWidth (ISGU) - The width of the "symbol box", that is, the part of
+                         the gadget box (usually delimited by a separator
+                         line) which contains the "pop-up" symbol. It is
+                         advised not to make it too wide, or there could be
+                         insufficient room for the gadget's active label.
+                         The default is 21 (like for GadTools cycle gadgets).
+                         Changing this attribute causes the gadget to be
+                         redrawn.
+
+SGA_SymbolOnly (ISU) - If TRUE, only the symbol box will be selectable, while
+                       the rest of the gadget will appear recessed and will
+                       be read-only. Defaults to FALSE.
+                       Changing this attribute causes the gadget to be
+                       redrawn.
+
+SGA_Separator (ISU) - If TRUE, a recessed separator line will be drawn
+                      between the symbol and the active label in the gadget
+                      box. Defaults to TRUE.
+                      Changing this attribute causes the gadget to be redrawn.
+
+SGA_ListFrame (ISU) - Pointer to a standard or BOOPSI image to be used as
+                      the background of the pop-up menu panel. When possible
+                      it is rendered with the IM_DRAWFRAME method, so try to
+                      support this. If NULL or not specified, a default image
+                      will be used (an instance of "frameiclass").
+
+SGA_DropShadow (ISU) - If TRUE, a four-pixel thick drop shadow will appear
+                       under the pop-up menu. The shadow will really darken
+                       the background on hicolor and truecolor screens, while
+                       on 8-bit screens it will be simulated with dithering.
+                       Defaults to FALSE.
+                       
+SGA_Transparent (ISU) - If TRUE, the pop-up menu background will feature a
+                        transparency effect on hicolor and truecolor screens.
+                        This tag has no effect if the gadget is used on a
+                        palette-mapped (8-bit) screen. Also, note that it can
+                        slow down considerably any menu "zoom" effect due to
+                        the additional workload. Defaults to FALSE. (V40.17)
+
+SGA_ItemSpacing (ISU) - The number of pixels which is to be added to the
+                        gadget's font height in order to determine the height
+                        of an item in the pop-up menu. The result of the sum
+                        will be ignored if it is smaller than the value of
+                        the SGA_ItemHeight attribute (see below). The default
+                        is zero.
+                       
+SGA_ItemHeight (ISU) - The exact height of each item in the pop-up menu.
+                       It can never be less than the gadget's font height
+                       plus the value of the SGA_ItemSpacing attribute.
+                       Defaults to the gadget's font height plus the value
+                       of the SGA_ItemSpacing attribute.
+
+SGA_ListJustify (ISU) - The alignment of labels within the pop-up menu panel.
+                        It can be SGJ_LEFT, SGJ_CENTER or SGJ_RIGHT. The
+                        default is SGJ_CENTER.
+                        Note: SGJ_RIGHT is not yet implemented.
+                        
+SGA_ActivePens (ISU) - Pointer to an array of four UWORDs containing the
+                       pen numbers to be used for rendering the active item
+                       in the pop-up menu panel. The meaning of the array
+                       index is: 0 - color of the text; 1 - color of the
+                       background; 2 - color of the bright edges; 3 - color
+                       of the dark edges.
+                       These are actual color numbers, not Intuition pen
+                       numbers.
+                       Defaults to using the colors of FILLTEXTPEN, FILLPEN,
+                       SHINEPEN and SHADOWPEN (although the presence of the
+                       VisualPrefs patch might change these defaults).
+
+SGA_ActiveBox (ISU) - If this is not zero, the active item in the pop-up
+                      menu panel will have a 3D frame around it. The frame
+                      will be recessed if this attribute is -1, otherwise
+                      it will be raised. The colors are determined with the
+                      SGA_ActivePens tag. Defaults to zero (no frame).
+
+SGA_BorderSize (ISU) - The thickness of the border to be left between the
+                       edges of the pop-up menu panel and the displayed
+                       labels. If it is set to -1, a suitable value will be
+                       chosen automatically. Defaults to -1.
+
+SGA_FullWidth (ISU) - If TRUE, the pop-up menu will have the same width of
+                      the entire gadget; if FALSE, it will have the width of
+                      the gadget minus the width of the symbol box. Defaults
+                      to FALSE.
+
+SGA_FollowMode (ISU) - Determines the behavior of the pop-up menu when the
+                       mouse pointer goes out of its boundaries. There are
+                       three possible values:
+                       SGFM_NONE - the active item becomes not highlighted.
+                       SGFM_KEEP - the active item remains highlighted, but
+                                   doesn't change until the pointer returns
+                                   on the panel.
+                       SGFM_FULL - the active item remains highlighted, and
+                                   can also change if the user moves the
+                                   pointer up and down, even if outside of
+                                   the menu panel.
+                       If the gadget is not sticky, and the user lets go of
+                       the mouse select button while the pointer is outside
+                       of the menu panel, the currently highlighted item will
+                       be selected, if there is one.
+                       The default is SGFM_NONE.
+                       
+SGA_ReportAll (ISU) - If TRUE, the gadget reports the selection of an item
+                      even if it was already the active item. If FALSE, a
+                      selection is only reported when the active item
+                      actually changes. Defaults to FALSE.
+                      Note: if there are no items (that is, if the gadget
+                      is really a button gadget) this attribute is currently
+                      ignored, and assumed TRUE.
+
+SGA_Refresh (SU) - This is not a real attribute; if you pass this tag with
+                   a value of TRUE, it will force an immediate refresh of the
+                   gadget's imagery. This is only useful for custom select
+                   gadgets obtained with the InitSelectGadgetA() function, as
+                   the usual RefreshGadgets() and RefreshGList() functions
+                   aren't always sufficient to refresh them correctly.
+                   Real "selectgclass" BOOPSI gadgets shouldn't need this tag.
+
+
+USER CONFIGURATION AND PROGRAMMING STYLE
+
+Although the "selectgclass" class offers many attributes to customize its
+look and behavior, programmers should not explicitly set the value of the
+ones which don't influence the working of their applications, or else the
+user would be confused by a multitude of differently-looking gadgets.
+
+Usually, the only attributes you really need to specify in your code are
+SGA_Active, SGA_Labels, SGA_TextPlace, SGA_Underscore, SGA_Quiet, SGA_Symbol,
+SGA_ListFrame and SGA_ReportAll (plus the various GA_#? ones).
+If you also use SGA_TextAttr or SGA_TextFont, it would be a good idea to
+offer the user a way to choose the font and size to be used.
+
+Of course, nothing stops you from using other attributes too, but it's a
+better style to do so only when it's really needed. For attributes which
+are transparent to your application, it is advised that you respect the
+default values.
+
+Such default values, for the most significant attributes defining the look
+and feel of the gadgets, can be globally set by the user in a preferences
+file, called "ENV:Gadgets/select.prefs".
+
+The attribute values found in the preferences file override the built-in
+default values for the corresponding tags; if an attribute isn't present
+in the file, or if the file is not found, it will keep using the value
+most recently set (the initial one being the built-in default).
+
+As the preferences file is just ASCII text, the user can edit it by hand
+to change the desired attributes. The format of the file is very simple; it
+is a list of tool types named exactly like the corresponding "selectgclass"
+tags, minus the SGA_ prefix.
+
+An example of file would be:
+
+   ItemSpacing=3
+   FullWidth=1
+   PopUpDelay=250
+
+As of now, the attributes settable by the user are the following ones ("inf"
+means "infinite"):
+
+Attribute     Range      Type       Default
+
+MinItems      [ 1..inf]  (integer)  1
+FullPopUp     [ 0, 1  ]  (boolean)  0
+PopUpDelay    [ 0..inf]  (integer)  0
+PopUpPos      [ 0..3  ]  (integer)  0
+Sticky        [ 0, 1  ]  (boolean)  0
+Justify       [ 0..2  ]  (integer)  1
+Separator     [ 0, 1  ]  (boolean)  1
+DropShadow    [ 0, 1  ]  (boolean)  0
+ItemSpacing   [ 0..inf]  (integer)  0
+ListJustify   [ 0..2  ]  (integer)  1
+ActiveBox     [-1..1  ]  (integer)  0
+BorderSize    [-1..inf]  (integer) -1
+FullWidth     [ 0, 1  ]  (boolean)  0
+FollowMode    [ 0..2  ]  (integer)  0
+PanelMode     [ 0..2  ]  (integer)  0
+MinTime       [ 0..inf]  (integer)  0
+MaxTime       [ 0..inf]  (integer)  0
+Transparent   [ 0, 1  ]  (boolean)  0
+
+
+TO DO
+
+Future releases should add the following features:
+
+ o More attributes globally settable by the user.
+
+ o Ability to display read-only pop-up menus.
+
+ o Ability to generate "repeat" messages if the gadget is kept pressed for
+   a while (only when it's a button gadget). Useful for making arrow buttons.
+
+ o Ability to only display the menu on a button release. Would make sense
+   for "sticky" gadgets.
+
+ o Text clipping for the gadget item labels.
+
+ o Some more code optimization.
+ 
+ 
+AUTHOR
+
+Massimo Tantignone
+Via Campagnoli, 4
+28100 Novara (NO)
+ITALY
+
+E-mail: tanti@intercom.it
+WWW:    http://www.intercom.it/~amigaws
+
+
+HISTORY
+
+40.18 (7.1.2001)
+   - Added support for some new V44 tags: GA_ReadOnly, GA_ActivateKey,
+     GA_TextAttr and GA_Underscore.
+   - Now the gadget can be programmatically activated via ActivateGadget().
+   - Now the pop-up menu can be controlled by keyboard.
+   - Since many people asked for this, now the gadget no longer adjusts
+     the pop-up menu's vertical position when the user clicks on its top
+     or bottom edge (used to do this in order to always place the active
+     item under the mouse pointer).
+   - Now the disabled ghosting pattern also covers the gadget's edges.
+   - Fixed an horrible bug that caused the gadget's image to be drawn at
+     a completely wrong position when the gadget had a negative vertical
+     coordinate.
+   - Fixed a bug which caused pop-up panels using direct bitmap rendering
+     to appear incomplete and/or corrupted when opening near to the upper
+     left corner of the screen.
+   - Fixed a bug which caused the disabled dithering to sometimes erase
+     the underlying gadget label.
+   - Improved the example programs with support for keyboard selection
+     and for the new read-only feature.
+   - Oops, it seems I never bothered to state who I am in the guide... ;-)
+     Now finally added some author information.
+
+40.17 (7.6.2000)
+   - Now the pop-up menu panel shows a real drop shadow (not dithered)
+     on hicolor and truecolor screens.
+   - Now the pop-up menu panel can have a transparency effect on hicolor
+     and truecolor screens.
+   - The background is visible again through corners of the menu panel
+     when the "round edges" option of VisualPrefs is active.
+
+40.16 (8.12.99)
+   Fixed a deadlock problem likely to happen when many gadgets of
+   this class were rendered simultaneously by different processes
+   (and in some other rare circumstances).
+
+40.15 (19.6.99)
+   Now the gadget preserves the pen color of any IntuiText passed to it
+   rather than incorrectly changing it to TEXTPEN.
+
+40.14 (14.1.99)
+   - Added the ability to do direct bitmap rendering (instead of opening a
+     window) for the pop-up menu panel, which gives a much smoother visual
+     feedback.
+   - Now the menu panel can have an opening/closing "zoom" effect with a
+     configurable duration.
+   - The drop shadow edges have now the correct shape when the "round edges"
+     option of VisualPrefs is active.
+   - Now the background process handling global preferences has a name.
+
+40.13 (17.11.98)
+   Slightly enhanced the GM_RENDER method.
+
+40.12 (25.5.98)
+   First public release.
+
+select.gadget/select.gadget                       select.gadget/select.gadget
+
+   NAME
+      select.gadget -- create a pop-up, cycle or button BOOPSI gadget
+
+   FUNCTION
+      The select.gadget shared library implements a public BOOPSI gadget
+      class, called "selectgclass", which provides gadgets with the ability
+      to display a pop-up menu allowing the user to pick up a choice among
+      a number of alternatives.
+      The "selectgclass" gadgets can also be used as standard GadTools-like
+      cycle gadgets, or even as simple button gadgets.
+      Nearly every aspect of their look and behavior can be configured
+      using tag items which give access to the class attributes.
+
+      For a complete description of the "selectgclass" class and its features,
+      see the class reference documentation in the --background-- paragraph.
+
+      The library also supplies some functions allowing to modify an
+      existing, non-BOOPSI gadget in order to make it a custom gadget
+      using the hook function of "selectgclass". This makes it possible
+      to use normal gadgets, such as GadTools GENERIC_KIND ones, as if
+      they were "selectgclass" BOOPSI gadgets (with some minor limitations,
+      mainly the lack of notification abilities).
+
+      To be able to create and use "selectgclass" objects in an application,
+      you first have to open the select.gadget library with OpenLibrary().
+      Once you have done this, you shouldn't close the library until all of
+      your "selectgclass" objects have been freed.
+
+   TAGS
+      For the full list of "selectgclass" attributes, see the class reference
+      documentation in the --background-- paragraph.
+
+   NOTES
+      The "selectgclass" gadget class currently does not support adding
+      gadgets to a screen titlebar. This feature shouldn't be needed anyway.
+
+   WARNING
+      Don't close the select.gadget library if you still have some instances
+      of "selectgclass" gadgets hanging around!
+
+   BUGS
+      None known.
+
+select.gadget/ClearSelectGadget               select.gadget/ClearSelectGadget
+
+   NAME
+      ClearSelectGadget -- strip a gadget of all additional information.
+
+   SYNOPSIS
+      ClearSelectGadget(gadget);
+                        A0
+
+      void ClearSelectGadget(struct Gadget *);
+
+   FUNCTION
+      Strips a gadget of all the addition information which was added by
+      InitSelectGadgetA(), and restores it (as much as possible) to its
+      former state. You should only call this function on gadgets that were
+      successfully modified by InitSelectGadgetA(), and call it only once.
+
+   INPUTS
+      gadget - pointer to a custom gadget initialized by InitSelectGadgetA()
+
+   NOTES
+      Once cleared, the gadget can still be used as a traditional gadget,
+      although in most cases this probably won't make much sense.
+
+   BUGS
+      None known.
+
+   SEE ALSO
+      InitSelectGadgetA()
+
+select.gadget/GetSGAttr                               select.gadget/GetSGAttr
+
+   NAME
+      GetSGAttr -- get value of an attribute of a non-BOOPSI select gadget.
+
+   SYNOPSIS
+      result = GetSGAttr(attrid, gadget, storageptr);
+      D0                 D0      A0      A1
+
+      ULONG GetSGAttr(ULONG, struct Gadget *, ULONG *);
+
+   FUNCTION
+      Inquires from the specified gadget the value of the specified
+      attribute. The gadget must be a non-BOOPSI gadget successfully
+      modified by InitSelectGadgetA(), and the attribute must be specific
+      to "selectgclass". Do not attempt to get standard "gadgetclass"
+      attributes with this function.
+      
+      You always pass the address of a LONG variable, which will receive
+      the same value that would be passed to SetSGAttrsA() in the ti_Data
+      portion of a TagItem element.
+      
+      Not all attributes will respond to this function. Those which do are
+      marked with the "G" applicability flag in the "Attributes" list found
+      in the class reference documentation (see --background-- paragraph).
+
+   INPUTS
+      attrid - an attribute tag ID understood by "selectgclass"
+      gadget - pointer to a custom select gadget
+      storageptr - pointer to appropriate storage for the answer
+
+   RESULT
+      result - FALSE if the inquiries of the specified attribute are not
+               provided by "selectgclass", TRUE otherwise
+
+   NOTES
+      Don't call this function on real BOOPSI "selectgclass" objects; use
+      intuition.library/GetAttr() instead.
+
+   BUGS
+      None known.
+
+   SEE ALSO
+      InitSelectGadgetA(), ClearSelectGadget(), SetSGAttrsA()
+
+select.gadget/InitSelectGadgetA               select.gadget/InitSelectGadgetA
+
+   NAME
+      InitSelectGadgetA -- change a gadget into a "selectgclass"-like gadget.
+      InitSelectGadget -- varargs stub for InitSelectGadgetA().
+
+   SYNOPSIS
+      success = InitSelectGadgetA(gadget, flags, taglist)
+      D0                          A0      D0     A1
+      
+      ULONG InitSelectGadgetA(struct Gadget *, ULONG, struct TagItem *);
+      
+      success = InitSelectGadget(gadget, flags, firsttag, ...)
+
+      ULONG InitSelectGadget(struct Gadget *, ULONG, Tag, ...);
+
+   FUNCTION
+      The purpose of this function is to modify an already existing gadget
+      in order to make it a custom gadget which uses the same hook function
+      used by the "selectgclass" BOOPSI gadgets.
+
+      This function can be very useful if you have already written a program
+      using a non-BOOPSI framework for its GUI (such as GadTools), as it
+      allows you to make your program use the "select" gadgets without having
+      to intermix BOOPSI code with the already existing non-BOOPSI code.
+
+      In the case of GadTools, for example, you could create GENERIC_KIND
+      gadgets instead of CYCLE_KIND gadgets, and later use InitSelectGadgetA()
+      to turn them into pop-up gadgets. You would then continue handling
+      your interface exactly as before, and once you are done with your
+      gadgets you would just have to restore them to their original state
+      (using the ClearSelectGadget() function) before deleting them as usual
+      with gadtools.library/FreeGadgets().
+
+      InitSelectGadgetA() does all necessary allocations, and appends some
+      information to the gadget structure. This information is initialized
+      on the basis of the attribute/value couples you pass in the tag list.
+      The tag list can only contain attributes specific to "selectgclass"
+      (SGA_#?), with the _only_ exceptions being the "gadgetclass" GA_Image,
+      GA_TextAttr, GA_Underscore, GA_ReadOnly and GA_ActivateKey attributes,
+      which can be passed to the function.
+      Every other "standard" gadget attribute (GA_#?) can't be passed to
+      InitSelectGadgetA(), but must be set in the gadget structure by hand.
+
+      However, once the structure has been modified by InitSelectGadgetA(),
+      and until it is restored by ClearSelectGadget(), some restrictions
+      apply to what you're allowed to do with its fields.
+
+      More precisely, you may read and write the following fields ONLY:
+      
+      NextGadget
+      LeftEdge, TopEdge, Width, Height
+      GadgetText
+      GadgetID
+      UserData
+      BoundsLeftEdge, BoundsTopEdge, BoundsWidth, BoundsHeight
+      
+      You may also read, set and clear the following flag bits:
+
+      GFLG_RELBOTTOM, GFLG_RELRIGHT, GFLG_RELWIDTH, GFLG_RELHEIGHT
+      GFLG_DISABLED
+      GFLG_LABELSTRING, GFLG_LABELIMAGE
+      GACT_RELVERIFY
+      GMORE_GADGETHELP
+      
+      The following flag bits are read-only:
+      
+      GFLG_IMAGEDISABLE
+      GFLG_EXTENDED
+      GACT_LEFTBORDER, GACT_TOPBORDER, GACT_RIGHTBORDER, GACT_BOTTOMBORDER
+      GACT_ENDGADGET
+      GTYP_SCRGADGET (not supported yet)
+      GTYP_GZZGADGET
+      GTYP_REQGADGET
+      GMORE_BOUNDS
+
+      All the above public fields and flag bits, even the read-only ones, may
+      be set BEFORE calling InitSelectGadgetA(), which will preserve them.
+      The only exception is the GACT_RELVERIFY bit: the function will always
+      set it, but you can clear it later (doesn't make much sense though,
+      as you would be no longer able to hear anything from the gadget).
+
+      Note well: all remaining fields and flag bits are considered PRIVATE
+      and should NOT be used nor relied on.
+
+      To set/change the gadget's image, always use the GA_Image tag. Don't
+      touch the GadgetRender field!
+
+      Also, if you modify by hand some values in the gadget structure which
+      could cause a change in the gadget visual appearance, such as its
+      position, size or text, you can force a refresh of the gadget by
+      calling SetSGAttrsA() with the couple { SGA_Refresh, TRUE }. Using
+      RefreshGadgets() or RefreshGList() is not sufficient in this case.
+      
+      Once your custom select gadget is no longer needed, you should strip it
+      of all the added information by using the ClearSelectGadget() function.
+      This will turn the gadget back into whatever it was before you called
+      InitSelectGadgetA().
+      
+   INPUTS
+      gadget - pointer to a non-BOOPSI gadget which will be transformed into
+               a custom gadget using the hook function of "selectgclass"; it
+               can safely be NULL, in which case the function returns failure
+      flags - reserved for future use; please set this to zero for now
+      taglist - pointer to an array of tags providing extra parameters, or
+                NULL
+                
+   TAGS
+      For the full list of "selectgclass" attributes, see the class reference
+      documentation in the --background-- paragraph.
+
+   RESULT
+      success - TRUE if all went ok, FALSE otherwise. If FALSE the gadget
+                has not been changed, so you don't have to clear it with
+                ClearSelectGadget()
+
+   EXAMPLE
+      Your already existing GadTools code might be looking like this:
+      
+         ...
+         newgadget.ng_GadgetText = "Qualifier:";
+         newgadget.ng_Flags = PLACETEXT_ABOVE;
+         ...
+         gad = CreateGadget(CYCLE_KIND,gad,&newgadget,GTCY_Labels,labels,
+                                                      GTCY_Active,active,
+                                                      TAG_END);
+         ...
+
+         
+      To use the "selectgclass" features, you could modify it this way:
+      
+         ...
+         newgadget.ng_GadgetText = "Qualifier:";
+         ...
+         gad = CreateGadget(GENERIC_KIND,gad,&newgadget,TAG_END);
+         
+         if (!InitSelectGadget(gad,0L,SGA_Labels,labels,
+                                      SGA_Active,active,
+                                      SGA_TextPlace,PLACETEXT_ABOVE,
+                                      TAG_END))
+         {
+            gad = NULL;  // From now on, all CreateGadget() calls will fail
+         }
+         
+         ...
+
+   BUGS
+      None known.
+
+   SEE ALSO
+      ClearSelectGadget()
+
+select.gadget/ObtainSelectGClass             select.gadget/ObtainSelectGClass
+
+   NAME
+      ObtainSelectGClass -- return a pointer to "selectgclass".
+
+   SYNOPSIS
+      sgclass = ObtainSelectGClass()
+      D0
+
+      Class *ObtainSelectGClass(void);
+
+   FUNCTION
+      Returns a pointer to the class implemented by the select.gadget, called
+      "selectgclass". Use this pointer with care, and do not reference it
+      after you've closed the select.gadget library.
+      
+   INPUTS
+      none
+
+   RESULT
+      sgclass - pointer to the class
+
+   BUGS
+      None known.
+
+   SEE ALSO
+
+select.gadget/SetSGAttrsA                           select.gadget/SetSGAttrsA
+
+   NAME
+      SetSGAttrsA -- change the attributes of a non-BOOPSI select gadget.
+      SetSGAttrs -- varargs stub for SetSGAttrsA().
+
+   SYNOPSIS
+      result = SetSGAttrsA(gadget, window, requester, flags, taglist)
+      D0                   A0      A1      A2         D0     A3
+      
+      ULONG SetSGAttrsA(struct Gadget *, struct Window *, 
+                        struct Requester *, ULONG, struct TagItem *);
+
+      result = SetSGAttrs(gadget, window, requester, flags, firsttag, ...)
+
+      ULONG SetSGAttrs(struct Gadget *, struct Window *,
+                       struct Requester *, ULONG, Tag, ...);
+
+   FUNCTION
+      Changes the attributes of a gadget modified by InitSelectGadgetA(),
+      according to the attributes chosen in the tag list. If an attribute
+      is not provided in the tag list, its value remains unchanged.
+
+      This function is only able to change the attributes which are
+      specific to "selectgclass", as well as the GA_Image, GA_TextAttr,
+      GA_Underscore, GA_ReadOnly and GA_ActivateKey attributes.
+      Any other standard "gadgetclass" attribute is not recognized, so
+      do NOT pass such attributes to SetSGAttrsA().
+
+      The gadget will refresh its imagery to reflect changes to visual
+      attributes, such as the active item, the "pop-up" symbol or the
+      gadget's frame image. If you also want to change standard gadget
+      attributes (like position, size and gadget text), first change them
+      by hand in the gadget structure, then call this function with the
+      tag item { SGA_Refresh, TRUE }, which will force a refresh.
+      See the documentation of InitSelectGadgetA() for a list of the fields
+      in the gadget structure that you are allowed to change by hand.
+
+      This function is provided to let you change the special attributes of
+      non-BOOPSI gadgets that were initialized by InitSelectGadgetA(); you
+      may not call intuition.library/SetGadgetAttrsA() on this special kind
+      of gadgets. The opposite is also true: this function must not be used
+      with real BOOPSI gadgets (not even "selectgclass" ones).
+
+   INPUTS
+      gadget - pointer to a custom gadget initialized by InitSelectGadgetA().
+               It may be NULL, in which case this function does nothing
+      window - pointer to the window containing the gadget. It may be NULL,
+               in which case the internal attributes of the gadget are
+               altered but no rendering occurs
+      requester - pointer to the requester containing the gadget, required
+                  only for REQGADGETs
+      flags - reserved for future use; please set this to zero for now
+      taglist - array of TagItem structures with attribute/value pairs
+      
+   TAGS
+      For the full list of "selectgclass" attributes, see the class reference
+      documentation in the --background-- paragraph, and only consider the
+      attributes with the "S" applicability flag.
+
+   RESULT
+      result - TRUE if all went ok, or FALSE if there was an error (usually
+               a failure in some memory allocation)
+
+   NOTES
+      Never, ever call this function with real "selectgclass" BOOPSI gadgets;
+      use intuition.library/SetGadgetAttrsA() instead.
+
+   BUGS
+      None known.
+
+   SEE ALSO
+      InitSelectGadgetA(), ClearSelectGadget(), GetSGAttr()
+

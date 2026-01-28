@@ -1,0 +1,12 @@
+* "select.gadget"
+##base _SelectGadgetBase
+##bias 30
+##public
+*--- functions in V40 or higher ---
+*
+ObtainSelectGClass()()
+InitSelectGadgetA(gadget,flags,taglist)(A0,D0,A1)
+ClearSelectGadget(gadget)(A0)
+SetSGAttrsA(gadget,window,requester,flags,taglist)(A0/A1/A2,D0,A3)
+GetSGAttr(attributeid,gadget,storage)(D0,A0/A1)
+##end
