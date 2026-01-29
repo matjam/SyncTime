@@ -96,8 +96,8 @@ jobs:
           cp SyncTime.info dist/SyncTime/
           cp README.md dist/SyncTime/
           cp LICENSE dist/SyncTime/
-          # Create LHA archive
-          cd dist && lha c ../SyncTime.lha SyncTime/
+          # Create LHA archive using 7z
+          cd dist && 7z a -tlha ../SyncTime.lha SyncTime/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
