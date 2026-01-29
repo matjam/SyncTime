@@ -88,14 +88,14 @@ jobs:
           VERSION=$(cat version.txt | tr -d '\n')
           # Update version in readme
           sed -i "s/^Version:.*/Version:      $VERSION/" SyncTime.readme
-          # Create archive directory structure
-          mkdir -p SyncTime
-          cp SyncTime SyncTime/
-          cp SyncTime.info SyncTime/
-          cp README.md SyncTime/
-          cp LICENSE SyncTime/
+          # Create archive directory structure (use different name to avoid conflict with binary)
+          mkdir -p dist/SyncTime
+          cp SyncTime dist/SyncTime/
+          cp SyncTime.info dist/SyncTime/
+          cp README.md dist/SyncTime/
+          cp LICENSE dist/SyncTime/
           # Create LHA archive
-          lha c SyncTime.lha SyncTime/
+          cd dist && lha c ../SyncTime.lha SyncTime/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
