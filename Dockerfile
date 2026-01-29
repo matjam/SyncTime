@@ -40,12 +40,11 @@ RUN git clone https://aur.archlinux.org/m68k-amigaos-gcc.git && \
     sed -i 's/> *\/dev\/null//g; s/2>&1//g' PKGBUILD && \
     makepkg -si --noconfirm
 
-# Install lha from AUR (patch to compile with modern GCC)
+# Install lha from AUR (use gnu89 for K&R C compatibility)
 RUN cd /home/builder && \
     git clone https://aur.archlinux.org/lha.git && \
     cd lha && \
-    sed -i 's/CFLAGS+=" /CFLAGS+=" -std=gnu89 -Wno-error /g' PKGBUILD && \
-    makepkg -si --noconfirm
+    CFLAGS="-std=gnu89 -Wno-error -O2" makepkg -si --noconfirm
 
 # Clean up build files to reduce image size
 RUN rm -rf /home/builder/m68k-amigaos-gcc /home/builder/lha
