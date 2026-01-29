@@ -20,7 +20,6 @@ RUN pacman -Syu --noconfirm && \
         flex \
         gettext \
         gperf \
-        lha \
         ncurses \
         rsync \
         texinfo \
@@ -39,8 +38,14 @@ RUN git clone https://aur.archlinux.org/m68k-amigaos-gcc.git && \
     cd m68k-amigaos-gcc && \
     makepkg -si --noconfirm
 
+# Install lha from AUR (creates LHA archives)
+RUN cd /home/builder && \
+    git clone https://aur.archlinux.org/lha.git && \
+    cd lha && \
+    makepkg -si --noconfirm
+
 # Clean up build files to reduce image size
-RUN rm -rf /home/builder/m68k-amigaos-gcc
+RUN rm -rf /home/builder/m68k-amigaos-gcc /home/builder/lha
 
 # Switch back to root for final setup
 USER root
