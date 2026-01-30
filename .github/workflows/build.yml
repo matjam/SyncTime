@@ -67,7 +67,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Find compiler and build SyncTime
+      - name: Build SyncTime and create archive
         run: |
           # Find where the cross-compiler is installed
           COMPILER=$(which m68k-amigaos-gcc 2>/dev/null || find /opt /usr -name "m68k-amigaos-gcc" -type f 2>/dev/null | head -1)
@@ -79,35 +79,26 @@ jobs:
           echo "Using PREFIX=$PREFIX"
           echo "Compiler version:"
           $COMPILER --version
-          make clean || true
-          make PREFIX=$PREFIX
-          echo "Build successful:"
-          ls -la SyncTime
-          file SyncTime
 
-      - name: Create Aminet LHA archive
-        run: |
-          VERSION=$(cat version.txt | tr -d '\n')
-          # Update version in readme
-          sed -i "s/^Version:.*/Version:      $VERSION/" SyncTime.readme
-          # Create archive directory structure (use different name to avoid conflict with binary)
-          mkdir -p dist/SyncTime
-          cp SyncTime dist/SyncTime/
-          cp SyncTime.info dist/SyncTime/
-          cp README.md dist/SyncTime/
-          cp LICENSE dist/SyncTime/
-          # Create LHA archive
-          cd dist && lha c ../SyncTime.lha SyncTime/
+          # Build everything and create archive
+          make clean || true
+          make PREFIX=$PREFIX archive
+
+          echo "Build successful:"
+          ls -la dist/SyncTime/
+          file dist/SyncTime/SyncTime
+          ls -la *.lha
+
+          # Copy readme to root for artifact upload
+          cp dist/SyncTime/SyncTime.readme .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: SyncTime
           path: |
-            SyncTime.lha
+            SyncTime-*.lha
             SyncTime.readme
-            SyncTime
-            SyncTime.info
           retention-days: 30
 
   release:
@@ -127,6 +118,6 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            SyncTime.lha
+            SyncTime-*.lha
             SyncTime.readme
           generate_release_notes: true
