@@ -14,6 +14,19 @@
 /* Request 16KB stack */
 LONG __stack = 16384;
 
+/* Suppress IDE warnings below */
+#ifndef VERSION_STRING
+#define VERSION_STRING "UNKNOWN"
+#endif
+
+#ifndef BUILD_DATE
+#define BUILD_DATE "UNKNOWN"
+#endif
+
+#ifndef COMMIT_HASH
+#define COMMIT_HASH "UNKNOWN"
+#endif
+
 /* AmigaOS version string */
 const char verstag[] =
     "\0$VER: SyncTime " VERSION_STRING " (" BUILD_DATE ") " COMMIT_HASH;
@@ -45,6 +58,7 @@ static BOOL cx_enabled  = TRUE;
 
 /* Sync state */
 static SyncStatus sync_status;
+static BOOL first_sync_done = FALSE;  /* Track if we've ever synced successfully */
 
 /* Custom event ID for hotkey */
 #define EVT_HOTKEY 1
@@ -244,7 +258,8 @@ static BOOL setup_commodity(int argc, char **argv)
 
         /* Check if we should open window on startup */
         if (Stricmp(popup, "YES") == 0) {
-            window_open(NULL);
+            if (window_open(NULL))
+                window_update_status(&sync_status);
         }
     }
 
@@ -285,7 +300,14 @@ static BOOL sync_in_progress = FALSE;
 static void set_status(int status_code, const char *text)
 {
     sync_status.status = status_code;
-    strcpy(sync_status.status_text, text);
+
+    /* Before first successful sync, show "Waiting for network..." for errors */
+    if (!first_sync_done && status_code == STATUS_ERROR) {
+        strcpy(sync_status.status_text, "Waiting for network...");
+    } else {
+        strcpy(sync_status.status_text, text);
+    }
+
     if (window_is_open())
         window_update_status(&sync_status);
 }
@@ -409,6 +431,7 @@ static void perform_sync(void)
 
     /* Success! */
     window_log("Clock synchronized successfully!");
+    first_sync_done = TRUE;
 
     /* Update sync status with timestamps */
     sync_status.status = STATUS_OK;
@@ -426,14 +449,21 @@ static void perform_sync(void)
 }
 
 /* =========================================================================
- * get_next_interval - Return timer interval based on last sync status
+ * get_next_interval - Return timer interval based on sync history
  *
- * If the last sync failed, return RETRY_INTERVAL (30s) for quick retry.
- * If the last sync succeeded, return the configured interval.
+ * Before first successful sync: return STARTUP_RETRY_INTERVAL (1s) for rapid retry.
+ * After first success, if last sync failed: return RETRY_INTERVAL (30s).
+ * After first success, if last sync succeeded: return configured interval.
  * ========================================================================= */
 
 static ULONG get_next_interval(void)
 {
+    /* Before first successful sync, retry every 1 second */
+    if (!first_sync_done) {
+        return STARTUP_RETRY_INTERVAL;
+    }
+
+    /* After first success, use normal schedule or 30s retry on failure */
     if (sync_status.status == STATUS_OK) {
         return (ULONG)config_get()->interval;
     }
@@ -483,8 +513,8 @@ static void event_loop(void)
                         if (msg_id == EVT_HOTKEY) {
                             if (window_is_open())
                                 window_close();
-                            else
-                                window_open(NULL);
+                            else if (window_open(NULL))
+                                window_update_status(&sync_status);
                         }
                         break;
 
@@ -508,11 +538,12 @@ static void event_loop(void)
                                 /* Another instance tried to start */
                                 if (window_is_open())
                                     window_close();
-                                else
-                                    window_open(NULL);
+                                else if (window_open(NULL))
+                                    window_update_status(&sync_status);
                                 break;
                             case CXCMD_APPEAR:
-                                window_open(NULL);
+                                if (window_open(NULL))
+                                    window_update_status(&sync_status);
                                 break;
                             case CXCMD_DISAPPEAR:
                                 window_close();
@@ -580,15 +611,15 @@ int main(int argc, char **argv)
     if (!setup_commodity(argc, argv))
         goto cleanup;
 
-    /* Schedule initial sync for 60 seconds from now (gives network time to start) */
+    /* Schedule initial sync immediately (1 second intervals until first success) */
     if (cx_enabled) {
         ULONG now, micro;
         clock_get_system_time(&now, &micro);
-        sync_status.next_sync_secs = now + INITIAL_SYNC_DELAY;
+        sync_status.next_sync_secs = now + STARTUP_RETRY_INTERVAL;
         clock_format_time(sync_status.next_sync_secs, sync_status.next_sync_text,
                           sizeof(sync_status.next_sync_text));
-        strcpy(sync_status.status_text, "Waiting for initial sync");
-        clock_start_timer(INITIAL_SYNC_DELAY);
+        strcpy(sync_status.status_text, "Waiting for network...");
+        clock_start_timer(STARTUP_RETRY_INTERVAL);
     }
 
     /* Run event loop */

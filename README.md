@@ -8,6 +8,15 @@ SyncTime is a commodity that synchronizes your Amiga's clock with internet
 time servers using the SNTP protocol. It features a Reaction-based GUI for
 configuration and includes a comprehensive timezone database.
 
+You may ask why I developed this while there are many other tools to do the
+same thing. And that's fair. Basically, it was an exercise for me to see
+how to do it, and to see if Claude could help me with it. And I also was
+kind of unhappy with the choices; they were either too simple or didn't
+make the configuration easy enough. I wanted it to be a drag and drop thing
+with no magic tooltip configuration, just find your region and it works.
+
+Please drop me a mail if you end up using this, and like it!
+
 ## Features
 
 - SNTP time synchronization from configurable NTP servers
@@ -54,6 +63,7 @@ From the configuration window you can:
 
 ## History
 
+- **1.0.3** - Retry sync every 1 second at startup until first success; gracefully handle network not ready
 - **1.0.2** - Delay initial sync by 60 seconds to allow network stack to start
 - **1.0.1** - Build system improvements
 - **1.0.0** - Initial release with SNTP, Reaction GUI, IANA timezone database

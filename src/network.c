@@ -16,22 +16,35 @@
 static LONG sock_fd = -1;
 
 /*
- * network_init - Open bsdsocket.library
+ * network_init - Initialize network subsystem
  *
- * Opens any version of bsdsocket.library (version 0) since
- * different TCP/IP stacks (Roadshow, AmiTCP, Miami) may vary.
- * The library base is stored in the global SocketBase.
+ * Just initializes state. The actual library opening is deferred
+ * to when we need it, so startup doesn't fail if network isn't ready.
  *
- * Returns TRUE on success, FALSE if library cannot be opened.
+ * Always returns TRUE.
  */
 BOOL network_init(void)
 {
-    SocketBase = OpenLibrary("bsdsocket.library", 0);
-    if (SocketBase == NULL)
-        return FALSE;
-
     sock_fd = -1;
+    SocketBase = NULL;
     return TRUE;
+}
+
+/*
+ * network_ensure_open - Open bsdsocket.library if not already open
+ *
+ * Opens any version of bsdsocket.library (version 0) since
+ * different TCP/IP stacks (Roadshow, AmiTCP, Miami) may vary.
+ *
+ * Returns TRUE if library is open, FALSE if it cannot be opened.
+ */
+static BOOL network_ensure_open(void)
+{
+    if (SocketBase != NULL)
+        return TRUE;
+
+    SocketBase = OpenLibrary("bsdsocket.library", 0);
+    return (SocketBase != NULL);
 }
 
 /*
@@ -64,6 +77,9 @@ BOOL network_resolve(const char *hostname, ULONG *ip_addr)
 {
     struct hostent *h;
 
+    if (!network_ensure_open())
+        return FALSE;
+
     h = gethostbyname((STRPTR)hostname);
     if (h == NULL)
         return FALSE;
@@ -93,6 +109,9 @@ BOOL network_send_udp(ULONG ip_addr, UWORD port,
     struct timeval tv;
     struct sockaddr_in dest;
     LONG result;
+
+    if (!network_ensure_open())
+        return FALSE;
 
     /* Close any previously open socket */
     if (sock_fd >= 0) {
