@@ -9,8 +9,8 @@ import sys
 
 HEADER = """\
 Short:        NTP time sync commodity with timezone support
-Author:       Nathan Ollerenshaw <chrome@stupendous.net>
-Uploader:     chrome@stupendous.net
+Author:       chrome@stupendous.net (Nathan Ollerenshaw)
+Uploader:     chrome@stupendous.net (Nathan Ollerenshaw)
 Type:         util/time
 Version:      {version}
 Architecture: m68k-amigaos >= 3.2.0
