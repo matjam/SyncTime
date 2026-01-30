@@ -89,16 +89,13 @@ jobs:
           file dist/SyncTime/SyncTime
           ls -la *.lha
 
-          # Copy readme to root for artifact upload
-          cp dist/SyncTime/SyncTime.readme .
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: SyncTime
           path: |
             SyncTime-*.lha
-            SyncTime.readme
+            dist/SyncTime/SyncTime.readme
           retention-days: 30
 
   release:
@@ -119,5 +116,5 @@ jobs:
         with:
           files: |
             SyncTime-*.lha
-            SyncTime.readme
+            **/SyncTime.readme
           generate_release_notes: true
