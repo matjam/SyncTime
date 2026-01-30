@@ -580,12 +580,15 @@ int main(int argc, char **argv)
     if (!setup_commodity(argc, argv))
         goto cleanup;
 
-    /* Perform initial sync */
-    perform_sync();
-
-    /* Start periodic timer: use retry interval if initial sync failed */
+    /* Schedule initial sync for 60 seconds from now (gives network time to start) */
     if (cx_enabled) {
-        clock_start_timer(get_next_interval());
+        ULONG now, micro;
+        clock_get_system_time(&now, &micro);
+        sync_status.next_sync_secs = now + INITIAL_SYNC_DELAY;
+        clock_format_time(sync_status.next_sync_secs, sync_status.next_sync_text,
+                          sizeof(sync_status.next_sync_text));
+        strcpy(sync_status.status_text, "Waiting for initial sync");
+        clock_start_timer(INITIAL_SYNC_DELAY);
     }
 
     /* Run event loop */

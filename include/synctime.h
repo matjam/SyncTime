@@ -67,6 +67,7 @@
 #define MIN_INTERVAL       60
 #define MAX_INTERVAL       86400
 #define RETRY_INTERVAL     30      /* Seconds between retries on failure */
+#define INITIAL_SYNC_DELAY 60      /* Seconds to wait before first sync */
 
 /* Prefs file paths */
 #define PREFS_ENV_PATH     "ENV:SyncTime.prefs"
