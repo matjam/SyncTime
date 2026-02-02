@@ -451,6 +451,8 @@ BOOL window_open(struct Screen *screen)
     Object *row = NULL;
     Object *row_status = NULL, *row_last = NULL, *row_next = NULL;
     Object *row_server = NULL, *row_interval = NULL;
+    Object *row_region = NULL;
+    Object *city_label = NULL;
 
     /* Initialize log list if needed */
     init_log_list();
@@ -598,12 +600,23 @@ BOOL window_open(struct Screen *screen)
         goto cleanup;
 
     /* Create city row */
+    city_label = create_label("City:");
+    if (!city_label)
+        goto cleanup;
+
     row = NewObject(LAYOUT_GetClass(), NULL,
         LAYOUT_Orientation, LAYOUT_ORIENT_HORIZ,
-        LAYOUT_AddImage, (ULONG)create_label("City:"),
+        LAYOUT_AddImage, (ULONG)city_label,
         CHILD_WeightedWidth, 0,
         LAYOUT_AddChild, (ULONG)gad_city,
         TAG_DONE);
+
+    if (!row)
+        goto cleanup;
+
+    row_region = create_label_row("Region:", gad_region);
+    if (!row_region)
+        goto cleanup;
 
     /* Create timezone group */
     timezone_group = NewObject(LAYOUT_GetClass(), NULL,
@@ -611,7 +624,7 @@ BOOL window_open(struct Screen *screen)
         LAYOUT_BevelStyle, BVS_GROUP,
         LAYOUT_Label, (ULONG)"Timezone",
         LAYOUT_SpaceOuter, TRUE,
-        LAYOUT_AddChild, (ULONG)create_label_row("Region:", gad_region),
+        LAYOUT_AddChild, (ULONG)row_region,
         CHILD_WeightedHeight, 0,
         LAYOUT_AddChild, (ULONG)row,
         CHILD_MinHeight, 80,
@@ -718,6 +731,11 @@ cleanup:
     if (!settings_group) {
         if (row_server)   DisposeObject(row_server);
         if (row_interval) DisposeObject(row_interval);
+    }
+    if (!timezone_group) {
+        if (row_region) DisposeObject(row_region);
+        if (row)        DisposeObject(row);
+        if (city_label) DisposeObject(city_label);
     }
     if (pub_screen_locked && pub_screen) {
         UnlockPubScreen(NULL, pub_screen);
