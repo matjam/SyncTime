@@ -66,6 +66,7 @@
  * ========================================================================= */
 
 static struct Screen *pub_screen = NULL;  /* Locked public screen for font settings */
+static BOOL pub_screen_locked = FALSE;    /* TRUE only if we LockPubScreen() */
 static Object *window_obj = NULL;
 static struct Window *win = NULL;
 
@@ -269,14 +270,24 @@ static Object *create_display_string(ULONG id, const char *text)
 static Object *create_label_row(const char *label_text, Object *gadget)
 {
     Object *label = create_label(label_text);
-    if (!label) return NULL;
+    Object *row;
 
-    return NewObject(LAYOUT_GetClass(), NULL,
+    if (!label)
+        return NULL;
+
+    row = NewObject(LAYOUT_GetClass(), NULL,
         LAYOUT_Orientation, LAYOUT_ORIENT_HORIZ,
         LAYOUT_AddImage, (ULONG)label,  /* Labels are images, not gadgets */
         CHILD_WeightedWidth, 0,
         LAYOUT_AddChild, (ULONG)gadget,
         TAG_DONE);
+
+    if (!row) {
+        DisposeObject(label); /* Prevent leak if row creation fails */
+        return NULL;
+    }
+
+    return row;
 }
 
 /* =========================================================================
@@ -456,12 +467,16 @@ BOOL window_open(struct Screen *screen)
         return TRUE;   /* Already open */
 
     /* Lock the public screen for proper font settings */
+    /* Lock the public screen for proper font settings */
+    pub_screen_locked = FALSE;
+
     if (screen) {
-        pub_screen = screen;
+        pub_screen = screen;               /* not locked by us */
     } else {
         pub_screen = LockPubScreen(NULL);  /* Lock default (Workbench) screen */
         if (!pub_screen)
             return FALSE;
+        pub_screen_locked = TRUE;
     }
 
     /* Read current config so gadgets reflect live values */
@@ -690,10 +705,11 @@ cleanup:
     if (layout_root) {
         DisposeObject(layout_root);
     }
-    if (pub_screen) {
+    if (pub_screen_locked && pub_screen) {
         UnlockPubScreen(NULL, pub_screen);
-        pub_screen = NULL;
     }
+    pub_screen = NULL;
+    pub_screen_locked = FALSE;
     layout_root = NULL;
     gad_status = gad_last_sync = gad_next_sync = NULL;
     gad_server = gad_interval = NULL;
@@ -746,10 +762,11 @@ void window_close(void)
     /* Note: log list is preserved across window open/close */
 
     /* Unlock the public screen */
-    if (pub_screen) {
+    if (pub_screen_locked && pub_screen) {
         UnlockPubScreen(NULL, pub_screen);
-        pub_screen = NULL;
     }
+    pub_screen = NULL;
+    pub_screen_locked = FALSE;
 
     /* Reset object pointers */
     layout_root = NULL;
