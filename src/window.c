@@ -66,6 +66,7 @@
  * ========================================================================= */
 
 static struct Screen *pub_screen = NULL;  /* Locked public screen for font settings */
+static BOOL pub_screen_locked = FALSE;    /* TRUE only if we LockPubScreen() */
 static Object *window_obj = NULL;
 static struct Window *win = NULL;
 
@@ -456,12 +457,16 @@ BOOL window_open(struct Screen *screen)
         return TRUE;   /* Already open */
 
     /* Lock the public screen for proper font settings */
+    /* Lock the public screen for proper font settings */
+    pub_screen_locked = FALSE;
+
     if (screen) {
-        pub_screen = screen;
+        pub_screen = screen;               /* not locked by us */
     } else {
         pub_screen = LockPubScreen(NULL);  /* Lock default (Workbench) screen */
         if (!pub_screen)
             return FALSE;
+        pub_screen_locked = TRUE;
     }
 
     /* Read current config so gadgets reflect live values */
@@ -690,10 +695,11 @@ cleanup:
     if (layout_root) {
         DisposeObject(layout_root);
     }
-    if (pub_screen) {
+    if (pub_screen_locked && pub_screen) {
         UnlockPubScreen(NULL, pub_screen);
-        pub_screen = NULL;
     }
+    pub_screen = NULL;
+    pub_screen_locked = FALSE;
     layout_root = NULL;
     gad_status = gad_last_sync = gad_next_sync = NULL;
     gad_server = gad_interval = NULL;
@@ -746,10 +752,11 @@ void window_close(void)
     /* Note: log list is preserved across window open/close */
 
     /* Unlock the public screen */
-    if (pub_screen) {
+    if (pub_screen_locked && pub_screen) {
         UnlockPubScreen(NULL, pub_screen);
-        pub_screen = NULL;
     }
+    pub_screen = NULL;
+    pub_screen_locked = FALSE;
 
     /* Reset object pointers */
     layout_root = NULL;
