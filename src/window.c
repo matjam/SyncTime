@@ -66,6 +66,7 @@
  * ========================================================================= */
 
 static struct Screen *pub_screen = NULL;  /* Locked public screen for font settings */
+static BOOL pub_screen_locked = FALSE;    /* TRUE only if we LockPubScreen() */
 static Object *window_obj = NULL;
 static struct Window *win = NULL;
 
@@ -446,8 +447,13 @@ BOOL window_open(struct Screen *screen)
     const char **regions;
     ULONG region_count, i;
     const TZEntry *tz;
-    Object *status_group, *settings_group, *timezone_group, *button_row;
-    Object *row;
+    Object *status_group = NULL, *settings_group = NULL, *timezone_group = NULL, *button_row = NULL;
+    Object *city_row = NULL;
+    Object *row_status = NULL, *row_last = NULL, *row_next = NULL;
+    Object *row_server = NULL, *row_interval = NULL;
+    Object *row_region = NULL;
+    Object *city_label = NULL;
+    Object *btn_sync = NULL, *btn_save = NULL, *btn_hide = NULL;
 
     /* Initialize log list if needed */
     init_log_list();
@@ -456,12 +462,15 @@ BOOL window_open(struct Screen *screen)
         return TRUE;   /* Already open */
 
     /* Lock the public screen for proper font settings */
+    pub_screen_locked = FALSE;
+
     if (screen) {
-        pub_screen = screen;
+        pub_screen = screen;               /* not locked by us */
     } else {
         pub_screen = LockPubScreen(NULL);  /* Lock default (Workbench) screen */
         if (!pub_screen)
             return FALSE;
+        pub_screen_locked = TRUE;
     }
 
     /* Read current config so gadgets reflect live values */
@@ -508,15 +517,22 @@ BOOL window_open(struct Screen *screen)
     if (!gad_status || !gad_last_sync || !gad_next_sync)
         goto cleanup;
 
+    row_status = create_label_row("Status:", gad_status);
+    row_last   = create_label_row("Last sync:", gad_last_sync);
+    row_next   = create_label_row("Next sync:", gad_next_sync);
+
+    if (!row_status || !row_last || !row_next)
+        goto cleanup;
+
     /* Create status group */
     status_group = NewObject(LAYOUT_GetClass(), NULL,
         LAYOUT_Orientation, LAYOUT_ORIENT_VERT,
         LAYOUT_BevelStyle, BVS_GROUP,
         LAYOUT_Label, (ULONG)"Status",
         LAYOUT_SpaceOuter, TRUE,
-        LAYOUT_AddChild, (ULONG)create_label_row("Status:", gad_status),
-        LAYOUT_AddChild, (ULONG)create_label_row("Last sync:", gad_last_sync),
-        LAYOUT_AddChild, (ULONG)create_label_row("Next sync:", gad_next_sync),
+        LAYOUT_AddChild, (ULONG)row_status,
+        LAYOUT_AddChild, (ULONG)row_last,
+        LAYOUT_AddChild, (ULONG)row_next,
         TAG_DONE);
 
     if (!status_group)
@@ -540,14 +556,20 @@ BOOL window_open(struct Screen *screen)
     if (!gad_server || !gad_interval)
         goto cleanup;
 
+    row_server   = create_label_row("Server:", gad_server);
+    row_interval = create_label_row("Interval (sec):", gad_interval);
+
+    if (!row_server || !row_interval)
+        goto cleanup;
+
     /* Create settings group */
     settings_group = NewObject(LAYOUT_GetClass(), NULL,
         LAYOUT_Orientation, LAYOUT_ORIENT_VERT,
         LAYOUT_BevelStyle, BVS_GROUP,
         LAYOUT_Label, (ULONG)"Settings",
         LAYOUT_SpaceOuter, TRUE,
-        LAYOUT_AddChild, (ULONG)create_label_row("Server:", gad_server),
-        LAYOUT_AddChild, (ULONG)create_label_row("Interval (sec):", gad_interval),
+        LAYOUT_AddChild, (ULONG)row_server,
+        LAYOUT_AddChild, (ULONG)row_interval,
         TAG_DONE);
 
     if (!settings_group)
@@ -578,12 +600,23 @@ BOOL window_open(struct Screen *screen)
         goto cleanup;
 
     /* Create city row */
-    row = NewObject(LAYOUT_GetClass(), NULL,
+    city_label = create_label("City:");
+    if (!city_label)
+        goto cleanup;
+
+    city_row = NewObject(LAYOUT_GetClass(), NULL,
         LAYOUT_Orientation, LAYOUT_ORIENT_HORIZ,
-        LAYOUT_AddImage, (ULONG)create_label("City:"),
+        LAYOUT_AddImage, (ULONG)city_label,
         CHILD_WeightedWidth, 0,
         LAYOUT_AddChild, (ULONG)gad_city,
         TAG_DONE);
+
+    if (!city_row)
+        goto cleanup;
+
+    row_region = create_label_row("Region:", gad_region);
+    if (!row_region)
+        goto cleanup;
 
     /* Create timezone group */
     timezone_group = NewObject(LAYOUT_GetClass(), NULL,
@@ -591,9 +624,9 @@ BOOL window_open(struct Screen *screen)
         LAYOUT_BevelStyle, BVS_GROUP,
         LAYOUT_Label, (ULONG)"Timezone",
         LAYOUT_SpaceOuter, TRUE,
-        LAYOUT_AddChild, (ULONG)create_label_row("Region:", gad_region),
+        LAYOUT_AddChild, (ULONG)row_region,
         CHILD_WeightedHeight, 0,
-        LAYOUT_AddChild, (ULONG)row,
+        LAYOUT_AddChild, (ULONG)city_row,
         CHILD_MinHeight, 80,
         LAYOUT_AddChild, (ULONG)gad_tz_info,
         CHILD_WeightedHeight, 0,
@@ -609,27 +642,37 @@ BOOL window_open(struct Screen *screen)
         GA_Text, (ULONG)"Show Log",
         TAG_DONE);
 
+    /* Create buttons */
+    btn_sync = NewObject(BUTTON_GetClass(), NULL,
+        GA_ID, GID_SYNC,
+        GA_RelVerify, TRUE,
+        GA_Text, (ULONG)"Sync Now",
+        TAG_DONE);
+
+    btn_save = NewObject(BUTTON_GetClass(), NULL,
+        GA_ID, GID_SAVE,
+        GA_RelVerify, TRUE,
+        GA_Text, (ULONG)"Save",
+        TAG_DONE);
+
+    btn_hide = NewObject(BUTTON_GetClass(), NULL,
+        GA_ID, GID_HIDE,
+        GA_RelVerify, TRUE,
+        GA_Text, (ULONG)"Hide",
+        TAG_DONE);
+
+    if (!gad_log_toggle || !btn_sync || !btn_save || !btn_hide)
+        goto cleanup;
+
     /* Create button row */
     button_row = NewObject(LAYOUT_GetClass(), NULL,
         LAYOUT_Orientation, LAYOUT_ORIENT_HORIZ,
         LAYOUT_EvenSize, TRUE,
         LAYOUT_SpaceOuter, TRUE,
-        LAYOUT_AddChild, (ULONG)NewObject(BUTTON_GetClass(), NULL,
-            GA_ID, GID_SYNC,
-            GA_RelVerify, TRUE,
-            GA_Text, (ULONG)"Sync Now",
-            TAG_DONE),
-        LAYOUT_AddChild, (ULONG)NewObject(BUTTON_GetClass(), NULL,
-            GA_ID, GID_SAVE,
-            GA_RelVerify, TRUE,
-            GA_Text, (ULONG)"Save",
-            TAG_DONE),
+        LAYOUT_AddChild, (ULONG)btn_sync,
+        LAYOUT_AddChild, (ULONG)btn_save,
         LAYOUT_AddChild, (ULONG)gad_log_toggle,
-        LAYOUT_AddChild, (ULONG)NewObject(BUTTON_GetClass(), NULL,
-            GA_ID, GID_HIDE,
-            GA_RelVerify, TRUE,
-            GA_Text, (ULONG)"Hide",
-            TAG_DONE),
+        LAYOUT_AddChild, (ULONG)btn_hide,
         TAG_DONE);
 
     if (!button_row)
@@ -690,10 +733,32 @@ cleanup:
     if (layout_root) {
         DisposeObject(layout_root);
     }
-    if (pub_screen) {
-        UnlockPubScreen(NULL, pub_screen);
-        pub_screen = NULL;
+    if (!status_group) {
+        if (row_status) DisposeObject(row_status);
+        if (row_last)   DisposeObject(row_last);
+        if (row_next)   DisposeObject(row_next);
     }
+    if (!settings_group) {
+        if (row_server)   DisposeObject(row_server);
+        if (row_interval) DisposeObject(row_interval);
+    }
+    if (!timezone_group) {
+        if (row_region) DisposeObject(row_region);
+        if (city_row)   DisposeObject(city_row);
+        if (city_label) DisposeObject(city_label);
+    }
+    if (!button_row) {
+        if (btn_sync) DisposeObject(btn_sync);
+        if (btn_save) DisposeObject(btn_save);
+        if (btn_hide) DisposeObject(btn_hide);
+        if (gad_log_toggle) DisposeObject(gad_log_toggle);
+        gad_log_toggle = NULL;
+    }
+    if (pub_screen_locked && pub_screen) {
+        UnlockPubScreen(NULL, pub_screen);
+    }
+    pub_screen = NULL;
+    pub_screen_locked = FALSE;
     layout_root = NULL;
     gad_status = gad_last_sync = gad_next_sync = NULL;
     gad_server = gad_interval = NULL;
@@ -746,10 +811,11 @@ void window_close(void)
     /* Note: log list is preserved across window open/close */
 
     /* Unlock the public screen */
-    if (pub_screen) {
+    if (pub_screen_locked && pub_screen) {
         UnlockPubScreen(NULL, pub_screen);
-        pub_screen = NULL;
     }
+    pub_screen = NULL;
+    pub_screen_locked = FALSE;
 
     /* Reset object pointers */
     layout_root = NULL;
