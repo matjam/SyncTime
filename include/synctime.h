@@ -66,8 +66,8 @@
 #define SERVER_NAME_MAX    128
 #define MIN_INTERVAL       60
 #define MAX_INTERVAL       86400
-#define RETRY_INTERVAL     30      /* Seconds between retries after first success */
-#define STARTUP_RETRY_INTERVAL 1   /* Seconds between retries before first success */
+#define RETRY_INTERVAL     60      /* Maximum delay between failed sync attempts */
+#define STARTUP_RETRY_INTERVAL 1   /* Delay before the initial sync attempt */
 
 /* Prefs file paths */
 #define PREFS_ENV_PATH     "ENV:SyncTime.prefs"

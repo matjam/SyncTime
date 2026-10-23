@@ -54,6 +54,11 @@ From the configuration window you can:
 - View the activity log
 - Trigger an immediate sync
 
+The first sync is attempted after one second. Failed attempts retry after
+2, 4, 8, 16, 30, then 60 seconds, staying at one minute during an extended
+outage. A successful sync resets the backoff and restores the configured
+sync interval. "Sync Now" still attempts immediately, even during backoff.
+
 ## Tooltypes
 
 - **CX_PRIORITY=n** - Commodity priority (default: 0)

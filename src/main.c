@@ -59,6 +59,11 @@ static BOOL cx_enabled  = TRUE;
 /* Sync state */
 static SyncStatus sync_status;
 static BOOL first_sync_done = FALSE;  /* Track if we've ever synced successfully */
+/* Index advances only after an actual failed attempt, not when rescheduling. */
+static const ULONG retry_intervals[] = {
+    STARTUP_RETRY_INTERVAL, 2, 4, 8, 16, 30, RETRY_INTERVAL
+};
+static ULONG retry_step = 0;
 
 /* Custom event ID for hotkey */
 #define EVT_HOTKEY 1
@@ -72,6 +77,7 @@ static void close_libraries(void);
 static BOOL setup_commodity(int argc, char **argv);
 static void cleanup_commodity(void);
 static void perform_sync(void);
+static void schedule_next_sync(ULONG interval);
 static void event_loop(void);
 
 /* =========================================================================
@@ -371,8 +377,7 @@ static void perform_sync(void)
     if (!network_resolve(cfg->server, &ip_addr)) {
         window_log("ERROR: DNS lookup failed");
         set_status(STATUS_ERROR, "DNS failed");
-        sync_in_progress = FALSE;
-        return;
+        goto failed;
     }
 
     /* Log resolved IP */
@@ -386,8 +391,7 @@ static void perform_sync(void)
     if (!network_send_udp(ip_addr, NTP_PORT, packet, NTP_PACKET_SIZE)) {
         window_log("ERROR: Failed to send UDP packet");
         set_status(STATUS_ERROR, "Send failed");
-        sync_in_progress = FALSE;
-        return;
+        goto failed;
     }
     window_log("Request sent, waiting for response...");
 
@@ -396,14 +400,12 @@ static void perform_sync(void)
     if (bytes < 0) {
         window_log("ERROR: Timeout waiting for response");
         set_status(STATUS_ERROR, "Timeout");
-        sync_in_progress = FALSE;
-        return;
+        goto failed;
     }
     if (bytes < NTP_PACKET_SIZE) {
         window_log("ERROR: Response too short");
         set_status(STATUS_ERROR, "Bad response");
-        sync_in_progress = FALSE;
-        return;
+        goto failed;
     }
     window_log("Received 48-byte response");
 
@@ -412,8 +414,7 @@ static void perform_sync(void)
     if (!sntp_parse_response(packet, &ntp_secs, &ntp_frac)) {
         window_log("ERROR: Invalid NTP packet format");
         set_status(STATUS_ERROR, "Invalid response");
-        sync_in_progress = FALSE;
-        return;
+        goto failed;
     }
     window_log("Response valid, extracting time...");
 
@@ -425,13 +426,13 @@ static void perform_sync(void)
     if (!clock_set_system_time(amiga_secs, 0)) {
         window_log("ERROR: Failed to set system time");
         set_status(STATUS_ERROR, "Clock set failed");
-        sync_in_progress = FALSE;
-        return;
+        goto failed;
     }
 
     /* Success! */
     window_log("Clock synchronized successfully!");
     first_sync_done = TRUE;
+    retry_step = 0;
 
     /* Update sync status with timestamps */
     sync_status.status = STATUS_OK;
@@ -439,35 +440,46 @@ static void perform_sync(void)
     sync_status.last_sync_secs = amiga_secs;
     clock_format_time(amiga_secs, sync_status.last_sync_text,
                       sizeof(sync_status.last_sync_text));
-    sync_status.next_sync_secs = amiga_secs + cfg->interval;
-    clock_format_time(sync_status.next_sync_secs, sync_status.next_sync_text,
-                      sizeof(sync_status.next_sync_text));
-    if (window_is_open())
-        window_update_status(&sync_status);
+    sync_in_progress = FALSE;
+    return;
 
+failed:
+    if (retry_step + 1 < sizeof(retry_intervals) / sizeof(retry_intervals[0]))
+        retry_step++;
     sync_in_progress = FALSE;
 }
 
 /* =========================================================================
  * get_next_interval - Return timer interval based on sync history
  *
- * Before first successful sync: return STARTUP_RETRY_INTERVAL (1s) for rapid retry.
- * After first success, if last sync failed: return RETRY_INTERVAL (30s).
- * After first success, if last sync succeeded: return configured interval.
+ * Use the configured interval after success. After failures, progressively
+ * back off to RETRY_INTERVAL, whether or not we have ever synced before.
+ * Merely asking for the next interval must not advance the backoff.
  * ========================================================================= */
 
 static ULONG get_next_interval(void)
 {
-    /* Before first successful sync, retry every 1 second */
-    if (!first_sync_done) {
-        return STARTUP_RETRY_INTERVAL;
-    }
-
-    /* After first success, use normal schedule or 30s retry on failure */
     if (sync_status.status == STATUS_OK) {
         return (ULONG)config_get()->interval;
     }
-    return RETRY_INTERVAL;
+    return retry_intervals[retry_step];
+}
+
+/* Schedule relative to completion of the attempt, including after a clock
+ * correction, and show the actual retry deadline rather than a stale one.
+ */
+static void schedule_next_sync(ULONG interval)
+{
+    ULONG now, micro;
+
+    clock_start_timer(interval);
+    if (clock_get_system_time(&now, &micro)) {
+        sync_status.next_sync_secs = now + interval;
+        clock_format_time(sync_status.next_sync_secs, sync_status.next_sync_text,
+                          sizeof(sync_status.next_sync_text));
+    }
+    if (window_is_open())
+        window_update_status(&sync_status);
 }
 
 /* =========================================================================
@@ -496,8 +508,7 @@ static void event_loop(void)
             /* Timer actually completed - acknowledged by clock_check_timer() */
             perform_sync();
             if (cx_enabled) {
-                /* Use retry interval (30s) if sync failed, otherwise configured interval */
-                clock_start_timer(get_next_interval());
+                schedule_next_sync(get_next_interval());
             }
         }
 
@@ -529,7 +540,7 @@ static void event_loop(void)
                                 ActivateCxObj(broker, TRUE);
                                 cx_enabled = TRUE;
                                 perform_sync();
-                                clock_start_timer(get_next_interval());
+                                schedule_next_sync(get_next_interval());
                                 break;
                             case CXCMD_KILL:
                                 running = FALSE;
@@ -564,12 +575,12 @@ static void event_loop(void)
             if (sync_now && cx_enabled) {
                 clock_abort_timer();
                 perform_sync();
-                clock_start_timer(get_next_interval());
+                schedule_next_sync(get_next_interval());
             }
             /* If interval changed, restart timer */
             else if (cfg->interval != old_interval && cx_enabled) {
                 clock_abort_timer();
-                clock_start_timer(get_next_interval());
+                schedule_next_sync(get_next_interval());
             }
         }
     }
@@ -611,15 +622,10 @@ int main(int argc, char **argv)
     if (!setup_commodity(argc, argv))
         goto cleanup;
 
-    /* Schedule initial sync immediately (1 second intervals until first success) */
+    /* Try promptly at startup; failed attempts will back off independently. */
     if (cx_enabled) {
-        ULONG now, micro;
-        clock_get_system_time(&now, &micro);
-        sync_status.next_sync_secs = now + STARTUP_RETRY_INTERVAL;
-        clock_format_time(sync_status.next_sync_secs, sync_status.next_sync_text,
-                          sizeof(sync_status.next_sync_text));
         strcpy(sync_status.status_text, "Waiting for network...");
-        clock_start_timer(STARTUP_RETRY_INTERVAL);
+        schedule_next_sync(STARTUP_RETRY_INTERVAL);
     }
 
     /* Run event loop */
